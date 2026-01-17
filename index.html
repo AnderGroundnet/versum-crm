@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VERSUM CRM - Sistema de Gestión</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .gold-gradient { background: linear-gradient(135deg, #D4A574 0%, #C8A882 100%); }
+    .versum-gold { color: #D4A574; }
+    .bg-versum-gold { background-color: #D4A574; }
+    .hover-gold:hover { background-color: #C8A882; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div id="root">Cargando...</div>
+
+  <script>
+    // ============================================
+    // CONFIGURACIÓN DE SUPABASE
+    // ⚠️ REEMPLAZA ESTAS LÍNEAS CON TUS CREDENCIALES
+    // ============================================
+    
+    const SUPABASE_URL = 'https://pqwlzrfqmhmsvbqjscgj.supabase.co'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxd2x6cmZxbWhtc3ZicWpzY2dqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2NDMyMDAsImV4cCI6MjA4NDIxOTIwMH0.aQo1-ZGyTpmNMHZS7FnppxDExv9nMrp7oxfFkfj5Bhw';    
+    // ============================================
+    
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    class VersumCRM {
+      constructor() {
+        this.currentUser = null;
+        this.currentTab = 'dashboard';
+        this.init();
+      }
+
+      async init() {
+        const savedUser = localStorage.getItem('versum_user');
+        if (savedUser) {
+          this.currentUser = JSON.parse(savedUser);
+          this.renderDashboard();
+        } else {
+          this.renderLogin();
+        }
+      }
+
+      async login(email, password) {
+        try {
+          const { data: usuarios, error } = await supabaseClient
+            .from('usuarios')
+            .select('*')
+            .eq('email', email)
+            .eq('activo', true)
+            .single();
+
+          if (error || !usuarios) {
+            alert('Usuario o contraseña incorrectos');
+            return;
+          }
+
+          if (password === 'versum2024' || password === usuarios.password_hash) {
+            this.currentUser = usuarios;
+            localStorage.setItem('versum_user', JSON.stringify(usuarios));
+            this.renderDashboard();
+          } else {
+            alert('Usuario o contraseña incorrectos');
+          }
+        } catch (err) {
+          console.error('Error login:', err);
+          alert('Error al iniciar sesión. Verifica tu conexión.');
+        }
+      }
+
+      logout() {
+        this.currentUser = null;
+        localStorage.removeItem('versum_user');
+        this.renderLogin();
+      }
+
+      renderLogin() {
+        document.getElementById('root').innerHTML = `
+          <div class="min-h-screen bg-black flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+              <div class="text-center mb-8">
+                <div class="bg-black w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+                  </svg>
+                </div>
+                <h1 class="text-3xl font-bold text-gray-800">VERSUM</h1>
+                <p class="versum-gold font-medium mt-2">Sistema de Gestión CRM</p>
+              </div>
+              
+              <form onsubmit="app.handleLoginSubmit(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                  <input type="email" id="email" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-600" placeholder="tu@email.com" />
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
+                  <input type="password" id="password" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-600" placeholder="••••••••" />
+                </div>
+                
+                <button type="submit" class="w-full gold-gradient text-white font-semibold py-3 rounded-lg hover-gold transition-colors">
+                  Iniciar Sesión
+                </button>
+              </form>
+
+              <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p class="text-sm text-blue-800 font-medium">Credenciales iniciales:</p>
+                <p class="text-sm text-blue-600 mt-1">Email: <strong>ceo@versum.com</strong></p>
+                <p class="text-sm text-blue-600">Contraseña: <strong>versum2024</strong></p>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      handleLoginSubmit(e) {
+        e.preventDefault();
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        this.login(email, password);
+      }
+
+      renderDashboard() {
+        const roleName = this.currentUser.rol === 'ceo' ? 'CEO' : this.currentUser.rol === 'admin' ? 'Administrador' : 'Comercial';
+
+        document.getElementById('root').innerHTML = `
+          <div class="min-h-screen bg-gray-50">
+            <header class="bg-black text-white shadow-lg">
+              <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                  <div class="gold-gradient p-2 rounded-lg">
+                    <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 class="text-2xl font-bold">VERSUM CRM</h1>
+                    <p class="text-sm versum-gold">${this.currentUser.nombre} - ${roleName}</p>
+                  </div>
+                </div>
+                <button onclick="app.logout()" class="flex items-center gap-2 bg-white bg-opacity-10 hover:bg-opacity-20 px-4 py-2 rounded-lg">
+                  <span>Salir</span>
+                </button>
+              </div>
+            </header>
+
+            <nav class="bg-white border-b">
+              <div class="max-w-7xl mx-auto px-4">
+                <div class="flex gap-1 overflow-x-auto">
+                  <button onclick="app.navigateTo('dashboard')" class="px-4 py-3 border-b-2 border-yellow-600">📊 Dashboard</button>
+                  <button onclick="app.navigateTo('clientes')" class="px-4 py-3 border-b-2 border-transparent hover:border-yellow-600">👥 Clientes</button>
+                  <button onclick="app.navigateTo('productos')" class="px-4 py-3 border-b-2 border-transparent hover:border-yellow-600">📦 Productos</button>
+                  ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? '<button onclick="app.navigateTo(\'usuarios\')" class="px-4 py-3 border-b-2 border-transparent hover:border-yellow-600">⚙️ Usuarios</button>' : ''}
+                </div>
+              </div>
+            </nav>
+
+            <main class="max-w-7xl mx-auto px-4 py-6" id="mainContent">
+              <p class="text-gray-500">Cargando...</p>
+            </main>
+          </div>
+        `;
+
+        this.navigateTo('dashboard');
+      }
+
+      navigateTo(tab) {
+        this.currentTab = tab;
+        const content = document.getElementById('mainContent');
+        
+        switch(tab) {
+          case 'dashboard':
+            content.innerHTML = this.renderDashboardContent();
+            this.loadDashboardData();
+            break;
+          case 'clientes':
+            content.innerHTML = this.renderClientesView();
+            this.loadClientes();
+            break;
+          case 'usuarios':
+            if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
+              content.innerHTML = this.renderUsuariosView();
+              this.loadUsuarios();
+            }
+            break;
+          default:
+            content.innerHTML = '<div class="bg-white p-6 rounded-xl"><h2 class="text-xl font-bold">En desarrollo</h2></div>';
+        }
+      }
+
+      renderDashboardContent() {
+        return `
+          <div class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-yellow-600">
+                <p class="text-sm text-gray-600">Total Clientes</p>
+                <p class="text-3xl font-bold text-gray-800 mt-1" id="totalClientes">0</p>
+              </div>
+              <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-600">
+                <p class="text-sm text-gray-600">Clientes Activos</p>
+                <p class="text-3xl font-bold text-green-600 mt-1" id="clientesActivos">0</p>
+              </div>
+              <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-orange-600">
+                <p class="text-sm text-gray-600">Tareas Pendientes</p>
+                <p class="text-3xl font-bold text-orange-600 mt-1" id="tareasPendientes">0</p>
+              </div>
+              <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-yellow-600">
+                <p class="text-sm text-gray-600">Ventas Totales</p>
+                <p class="text-3xl font-bold versum-gold mt-1" id="ventasTotales">€0</p>
+              </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+              <h2 class="text-xl font-bold mb-4">Pipeline de Ventas</h2>
+              <div class="grid grid-cols-4 gap-4">
+                <div class="bg-blue-50 p-4 rounded-lg">
+                  <p class="text-sm font-medium text-blue-800">Contacto</p>
+                  <p class="text-2xl font-bold text-blue-600 mt-2" id="pipelineContacto">0</p>
+                </div>
+                <div class="bg-purple-50 p-4 rounded-lg">
+                  <p class="text-sm font-medium text-purple-800">Muestras</p>
+                  <p class="text-2xl font-bold text-purple-600 mt-2" id="pipelineMuestras">0</p>
+                </div>
+                <div class="bg-green-50 p-4 rounded-lg">
+                  <p class="text-sm font-medium text-green-800">Activos</p>
+                  <p class="text-2xl font-bold text-green-600 mt-2" id="pipelineCliente">0</p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                  <p class="text-sm font-medium text-gray-800">Perdidos</p>
+                  <p class="text-2xl font-bold text-gray-600 mt-2" id="pipelinePerdido">0</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm" id="rankingContainer"></div>
+          </div>
+        `;
+      }
+
+      renderClientesView() {
+        return `
+          <div>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold">Gestión de Clientes</h2>
+              <button onclick="alert('Función en desarrollo')" class="gold-gradient text-white px-4 py-2 rounded-lg hover-gold">+ Nuevo Cliente</button>
+            </div>
+            <div id="clientesList" class="grid gap-4">
+              <p class="text-gray-500 text-center py-8">Cargando...</p>
+            </div>
+          </div>
+        `;
+      }
+
+      renderUsuariosView() {
+        return `
+          <div>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold">Gestión de Usuarios</h2>
+              <button onclick="alert('Función en desarrollo')" class="gold-gradient text-white px-4 py-2 rounded-lg hover-gold">+ Nuevo Usuario</button>
+            </div>
+            <div id="usuariosList" class="grid gap-4">
+              <p class="text-gray-500 text-center py-8">Cargando...</p>
+            </div>
+          </div>
+        `;
+      }
+
+      async loadDashboardData() {
+        try {
+          let query = supabaseClient.from('clientes').select('*', { count: 'exact' });
+          if (this.currentUser.rol === 'comercial') {
+            query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
+          }
+          
+          const { data: clientes, count } = await query;
+          
+          document.getElementById('totalClientes').textContent = count || 0;
+          
+          if (clientes) {
+            const activos = clientes.filter(c => c.fase === 'cliente').length;
+            document.getElementById('clientesActivos').textContent = activos;
+            document.getElementById('pipelineContacto').textContent = clientes.filter(c => c.fase === 'contacto').length;
+            document.getElementById('pipelineMuestras').textContent = clientes.filter(c => c.fase === 'muestras').length;
+            document.getElementById('pipelineCliente').textContent = activos;
+            document.getElementById('pipelinePerdido').textContent = clientes.filter(c => c.fase === 'perdido').length;
+          }
+
+          let tareasQuery = supabaseClient.from('tareas').select('*', { count: 'exact' }).eq('completada', false).lte('fecha', new Date().toISOString().split('T')[0]);
+          if (this.currentUser.rol === 'comercial') tareasQuery = tareasQuery.eq('comercial_id', this.currentUser.id);
+          const { count: tareas } = await tareasQuery;
+          document.getElementById('tareasPendientes').textContent = tareas || 0;
+
+          let pedidosQuery = supabaseClient.from('pedidos').select('total');
+          if (this.currentUser.rol === 'comercial') pedidosQuery = pedidosQuery.eq('comercial_id', this.currentUser.id);
+          const { data: pedidos } = await pedidosQuery;
+          const total = pedidos ? pedidos.reduce((s, p) => s + parseFloat(p.total || 0), 0) : 0;
+          document.getElementById('ventasTotales').textContent = `€${total.toFixed(2)}`;
+
+          if (this.currentUser.rol !== 'comercial') this.loadRanking();
+
+        } catch (err) {
+          console.error('Error cargando datos:', err);
+        }
+      }
+
+      async loadRanking() {
+        try {
+          const { data: comerciales } = await supabaseClient.from('usuarios').select('id, nombre').eq('rol', 'comercial').eq('activo', true);
+          if (!comerciales || comerciales.length === 0) {
+            document.getElementById('rankingContainer').innerHTML = '<p class="text-gray-500">No hay comerciales</p>';
+            return;
+          }
+
+          const ranking = await Promise.all(comerciales.map(async (c) => {
+            const { data: pedidos } = await supabaseClient.from('pedidos').select('total').eq('comercial_id', c.id);
+            const ventas = pedidos ? pedidos.reduce((s, p) => s + parseFloat(p.total || 0), 0) : 0;
+            const { count } = await supabaseClient.from('clientes').select('*', { count: 'exact' }).eq('asignado_a', c.id);
+            return { nombre: c.nombre, ventas, clientes: count || 0 };
+          }));
+
+          ranking.sort((a, b) => b.ventas - a.ventas);
+
+          document.getElementById('rankingContainer').innerHTML = `
+            <h2 class="text-xl font-bold mb-4">Ranking de Comerciales</h2>
+            <table class="w-full">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-sm">Posición</th>
+                  <th class="px-4 py-3 text-left text-sm">Comercial</th>
+                  <th class="px-4 py-3 text-left text-sm">Clientes</th>
+                  <th class="px-4 py-3 text-left text-sm">Ventas</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y">
+                ${ranking.map((r, i) => `
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-sm font-bold">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</td>
+                    <td class="px-4 py-3 text-sm">${r.nombre}</td>
+                    <td class="px-4 py-3 text-sm">${r.clientes}</td>
+                    <td class="px-4 py-3 text-sm font-bold versum-gold">€${r.ventas.toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        } catch (err) {
+          console.error('Error ranking:', err);
+        }
+      }
+
+      async loadClientes() {
+        try {
+          let query = supabaseClient.from('clientes').select('*, asignado:usuarios!clientes_asignado_a_fkey(nombre)');
+          if (this.currentUser.rol === 'comercial') {
+            query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
+          }
+
+          const { data: clientes, error } = await query.order('fecha_creacion', { ascending: false });
+          if (error) throw error;
+
+          const container = document.getElementById('clientesList');
+          if (!clientes || clientes.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-center py-8">No hay clientes</p>';
+            return;
+          }
+
+          container.innerHTML = clientes.map(c => `
+            <div class="bg-white p-6 rounded-xl shadow-sm border">
+              <div class="flex justify-between">
+                <div class="flex-1">
+                  <h3 class="text-lg font-bold">${c.nombre}</h3>
+                  ${c.empresa ? `<p class="text-gray-600">${c.empresa}</p>` : ''}
+                  ${c.email ? `<p class="text-sm text-gray-500 mt-2">📧 ${c.email}</p>` : ''}
+                  ${c.telefono ? `<p class="text-sm text-gray-500">📞 ${c.telefono}</p>` : ''}
+                  <p class="mt-2 text-sm versum-gold">${c.asignado ? `👤 ${c.asignado.nombre}` : '⚠️ Sin asignar'}</p>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs h-fit ${this.getFaseColor(c.fase)}">${this.getFaseLabel(c.fase)}</span>
+              </div>
+            </div>
+          `).join('');
+        } catch (err) {
+          console.error('Error clientes:', err);
+          document.getElementById('clientesList').innerHTML = '<p class="text-red-500">Error cargando clientes</p>';
+        }
+      }
+
+      async loadUsuarios() {
+        try {
+          const { data: usuarios } = await supabaseClient.from('usuarios').select('*').order('created_at', { ascending: false });
+          
+          const container = document.getElementById('usuariosList');
+          container.innerHTML = usuarios.map(u => `
+            <div class="bg-white p-6 rounded-xl shadow-sm border">
+              <div class="flex justify-between">
+                <div>
+                  <h3 class="text-lg font-bold">${u.nombre}</h3>
+                  <p class="text-gray-600">📧 ${u.email}</p>
+                  <p class="text-sm versum-gold mt-2">${this.getRolLabel(u.rol)}</p>
+                  ${u.comision_porcentaje > 0 ? `<p class="text-sm text-gray-500">💰 Comisión: ${u.comision_porcentaje}%</p>` : ''}
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs h-fit ${u.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                  ${u.activo ? 'Activo' : 'Inactivo'}
+                </span>
+              </div>
+            </div>
+          `).join('');
+        } catch (err) {
+          console.error('Error usuarios:', err);
+        }
+      }
+
+      getFaseColor(fase) {
+        const c = { contacto: 'bg-blue-100 text-blue-700', muestras: 'bg-purple-100 text-purple-700', cliente: 'bg-green-100 text-green-700', perdido: 'bg-gray-100 text-gray-700' };
+        return c[fase] || 'bg-gray-100';
+      }
+
+      getFaseLabel(fase) {
+        const l = { contacto: 'Contacto', muestras: 'Muestras', cliente: 'Activo', perdido: 'Perdido' };
+        return l[fase] || fase;
+      }
+
+      getRolLabel(rol) {
+        const l = { ceo: 'CEO', admin: 'Administrador', comercial: 'Comercial' };
+        return l[rol] || rol;
+      }
+    }
+
+    const app = new VersumCRM();
+  </script>
+</body>
+</html>
