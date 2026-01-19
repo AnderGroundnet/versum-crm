@@ -276,16 +276,19 @@ class VersumCRM {
   this.loadProductos();
   break;
       case 'agenda':
-        content.innerHTML = '<div class="card"><h2 class="text-xl font-bold">Agenda</h2><p class="text-gray-600 mt-2">Sección en desarrollo...</p></div>';
-        break;
+  content.innerHTML = this.renderAgendaView();
+  this.loadTareas('pendientes');
+  break;
       case 'finanzas':
-        content.innerHTML = '<div class="card"><h2 class="text-xl font-bold">Finanzas</h2><p class="text-gray-600 mt-2">Sección en desarrollo...</p></div>';
-        break;
+  content.innerHTML = this.renderFinanzasView();
+  this.loadFinanzas('todas');
+  break;
       case 'usuarios':
-        if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
-          content.innerHTML = '<div class="card"><h2 class="text-xl font-bold">Usuarios</h2><p class="text-gray-600 mt-2">Sección en desarrollo...</p></div>';
-        }
-        break;
+  if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
+    content.innerHTML = this.renderUsuariosView();
+    this.loadUsuarios();
+  }
+  break;
       default:
         content.innerHTML = '<div class="card"><h2 class="text-xl font-bold">Sección en desarrollo</h2></div>';
     }
@@ -1240,6 +1243,1179 @@ class VersumCRM {
 
   // ============================================
   // FIN MÓDULO 5
+  // ============================================
+// ============================================
+  // MÓDULO 6: AGENDA Y TAREAS
+  // ============================================
+
+  renderAgendaView() {
+    return `
+      <div>
+        <div class="flex justify-between mb-4">
+          <h2 class="text-2xl font-bold">Agenda y Tareas</h2>
+          <button onclick="app.openModalTarea()" class="btn btn-gold">+ Nueva Tarea</button>
+        </div>
+
+        <!-- Resumen de tareas -->
+        <div class="grid grid-2 mb-4">
+          <div class="card" style="background: linear-gradient(135deg, #fef3c7, #fde68a); border-left: 4px solid #f59e0b;">
+            <h3 class="font-bold mb-2">Tareas Pendientes</h3>
+            <p class="text-3xl font-bold" style="color: #92400e;" id="countPendientes">0</p>
+          </div>
+          <div class="card" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-left: 4px solid #10b981;">
+            <h3 class="font-bold mb-2">Tareas Completadas</h3>
+            <p class="text-3xl font-bold" style="color: #065f46;" id="countCompletadas">0</p>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="card mb-4">
+          <div class="flex gap-2" style="flex-wrap: wrap;">
+            <button onclick="app.filtrarTareas('pendientes')" class="btn btn-sm" id="filtro-pendientes" style="background: #f59e0b; color: white;">Pendientes</button>
+            <button onclick="app.filtrarTareas('hoy')" class="btn btn-sm btn-blue" id="filtro-hoy">Hoy</button>
+            <button onclick="app.filtrarTareas('semana')" class="btn btn-sm btn-gray" id="filtro-semana">Esta Semana</button>
+            <button onclick="app.filtrarTareas('completadas')" class="btn btn-sm btn-gray" id="filtro-completadas">Completadas</button>
+            <button onclick="app.filtrarTareas('todas')" class="btn btn-sm btn-gray" id="filtro-todas">Todas</button>
+          </div>
+        </div>
+
+        <!-- Lista de tareas -->
+        <div id="tareasList">
+          <div class="card text-center py-8">
+            <p class="text-gray-600">Cargando tareas...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Tarea -->
+      <div id="modalTarea" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="text-xl font-bold">Nueva Tarea</h2>
+            <button onclick="app.closeModalTarea()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
+          </div>
+          <form onsubmit="app.handleTareaSubmit(event)">
+            <div class="modal-body">
+              <div class="mb-4">
+                <label class="label">Cliente</label>
+                <select id="tareaCliente" class="select">
+                  <option value="">Sin cliente asociado</option>
+                </select>
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Descripción *</label>
+                <textarea id="tareaDescripcion" class="textarea" required placeholder="Ej: Llamar para seguimiento..."></textarea>
+              </div>
+
+              <div class="grid grid-2">
+                <div class="mb-4">
+                  <label class="label">Fecha *</label>
+                  <input type="date" id="tareaFecha" class="input" required />
+                </div>
+                <div class="mb-4">
+                  <label class="label">Tipo</label>
+                  <select id="tareaTipo" class="select">
+                    <option value="seguimiento">Seguimiento</option>
+                    <option value="llamada">Llamada</option>
+                    <option value="reunion">Reunión</option>
+                    <option value="email">Email</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" onclick="app.closeModalTarea()" class="btn btn-gray">Cancelar</button>
+              <button type="submit" class="btn btn-gold">Guardar Tarea</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  async loadTareas(filtro = 'pendientes') {
+    try {
+      let query = supabaseClient
+        .from('tareas')
+        .select('*, cliente:clientes(nombre, empresa), comercial:usuarios!tareas_comercial_id_fkey(nombre)')
+        .order('fecha', { ascending: true });
+
+      // Filtrar por comercial si no es CEO/Admin
+      if (this.currentUser.rol === 'comercial') {
+        query = query.eq('comercial_id', this.currentUser.id);
+      }
+
+      const { data: tareas, error } = await query;
+      if (error) throw error;
+
+      // Aplicar filtros
+      let tareasFiltradas = tareas || [];
+      const hoy = new Date().toISOString().split('T')[0];
+      const semanaFin = new Date();
+      semanaFin.setDate(semanaFin.getDate() + 7);
+      const semanaFinStr = semanaFin.toISOString().split('T')[0];
+
+      switch(filtro) {
+        case 'pendientes':
+          tareasFiltradas = tareasFiltradas.filter(t => !t.completada && t.fecha <= hoy);
+          break;
+        case 'hoy':
+          tareasFiltradas = tareasFiltradas.filter(t => t.fecha === hoy);
+          break;
+        case 'semana':
+          tareasFiltradas = tareasFiltradas.filter(t => !t.completada && t.fecha >= hoy && t.fecha <= semanaFinStr);
+          break;
+        case 'completadas':
+          tareasFiltradas = tareasFiltradas.filter(t => t.completada);
+          break;
+        case 'todas':
+          // Mostrar todas
+          break;
+      }
+
+      // Actualizar contadores
+      const pendientes = tareas.filter(t => !t.completada && t.fecha <= hoy).length;
+      const completadas = tareas.filter(t => t.completada).length;
+      document.getElementById('countPendientes').textContent = pendientes;
+      document.getElementById('countCompletadas').textContent = completadas;
+
+      // Actualizar botones activos
+      document.querySelectorAll('[id^="filtro-"]').forEach(btn => {
+        btn.classList.remove('btn-blue');
+        btn.classList.add('btn-gray');
+        btn.style.background = '';
+        btn.style.color = '';
+      });
+      const btnActivo = document.getElementById(`filtro-${filtro}`);
+      if (btnActivo) {
+        btnActivo.classList.remove('btn-gray');
+        btnActivo.classList.add('btn-blue');
+      }
+
+      const container = document.getElementById('tareasList');
+      
+      if (tareasFiltradas.length === 0) {
+        container.innerHTML = `
+          <div class="card text-center py-8">
+            <p class="text-gray-600 mb-4">No hay tareas ${filtro === 'todas' ? 'registradas' : 'en esta categoría'}</p>
+            <button onclick="app.openModalTarea()" class="btn btn-gold">Crear Nueva Tarea</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = tareasFiltradas.map(t => {
+        const fechaTarea = new Date(t.fecha + 'T00:00:00');
+        const hoyDate = new Date(hoy + 'T00:00:00');
+        const isPendiente = !t.completada && fechaTarea <= hoyDate;
+        const isFutura = !t.completada && fechaTarea > hoyDate;
+        const esHoy = t.fecha === hoy;
+
+        return `
+          <div class="card" style="border-left: 4px solid ${t.completada ? '#d1d5db' : isPendiente ? '#ef4444' : '#3b82f6'}; ${t.completada ? 'opacity: 0.7;' : ''}">
+            <div class="flex" style="gap: 1rem;">
+              <button 
+                onclick="app.toggleTarea('${t.id}')" 
+                style="width: 2rem; height: 2rem; min-width: 2rem; border-radius: 50%; border: 2px solid ${t.completada ? '#10b981' : '#d1d5db'}; background: ${t.completada ? '#10b981' : 'white'}; cursor: pointer; display: flex; align-items: center; justify-content: center; color: white; font-size: 1rem;"
+              >
+                ${t.completada ? '✓' : ''}
+              </button>
+              
+              <div style="flex: 1;">
+                <p class="font-bold ${t.completada ? 'text-gray-600' : ''}" style="${t.completada ? 'text-decoration: line-through;' : ''}">${t.descripcion}</p>
+                
+                ${t.cliente ? `<p class="text-sm text-gray-600 mt-1">👤 Cliente: ${t.cliente.nombre}</p>` : ''}
+                
+                <div class="flex gap-2 mt-2" style="flex-wrap: wrap; align-items: center;">
+                  <span class="badge ${esHoy ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.75rem;">
+                    📅 ${this.formatearFecha(t.fecha)}
+                  </span>
+                  
+                  ${isPendiente && !t.completada ? '<span class="badge" style="background: #fef2f2; color: #dc2626;">⚠️ PENDIENTE</span>' : ''}
+                  ${isFutura ? '<span class="badge badge-blue">📆 Programada</span>' : ''}
+                  ${t.completada ? '<span class="badge badge-green">✓ Completada</span>' : ''}
+                  
+                  <span class="badge" style="background: #f3f4f6; color: #6b7280;">${this.getTipoTareaLabel(t.tipo)}</span>
+                  
+                  ${this.currentUser.rol !== 'comercial' && t.comercial ? `<span class="badge badge-blue">👤 ${t.comercial.nombre}</span>` : ''}
+                </div>
+              </div>
+              
+              <button 
+                onclick="app.deleteTarea('${t.id}')" 
+                style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem; color: #6b7280; align-self: flex-start;"
+                title="Eliminar"
+              >
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+    } catch (err) {
+      console.error('Error cargando tareas:', err);
+      document.getElementById('tareasList').innerHTML = `
+        <div class="card text-center py-8">
+          <p style="color: #ef4444;">Error cargando tareas</p>
+          <button onclick="app.loadTareas('pendientes')" class="btn btn-blue btn-sm mt-2">Reintentar</button>
+        </div>
+      `;
+    }
+  }
+
+  filtrarTareas(filtro) {
+    this.loadTareas(filtro);
+  }
+
+  formatearFecha(fecha) {
+    const f = new Date(fecha + 'T00:00:00');
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    const diff = Math.floor((f - hoy) / (1000 * 60 * 60 * 24));
+    
+    if (diff === 0) return 'Hoy';
+    if (diff === 1) return 'Mañana';
+    if (diff === -1) return 'Ayer';
+    if (diff < -1) return `Hace ${Math.abs(diff)} días`;
+    if (diff > 1) return `En ${diff} días`;
+    
+    return f.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  }
+
+  getTipoTareaLabel(tipo) {
+    const labels = {
+      seguimiento: '📞 Seguimiento',
+      llamada: '📞 Llamada',
+      reunion: '🤝 Reunión',
+      email: '📧 Email',
+      otro: '📋 Otro'
+    };
+    return labels[tipo] || tipo;
+  }
+
+  // ============================================
+  // MODAL TAREA
+  // ============================================
+
+  async openModalTarea() {
+    const modal = document.getElementById('modalTarea');
+
+    // Cargar clientes
+    try {
+      let query = supabaseClient
+        .from('clientes')
+        .select('id, nombre, empresa')
+        .order('nombre', { ascending: true });
+
+      if (this.currentUser.rol === 'comercial') {
+        query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
+      }
+
+      const { data: clientes } = await query;
+
+      const selectCliente = document.getElementById('tareaCliente');
+      selectCliente.innerHTML = '<option value="">Sin cliente asociado</option>' +
+        (clientes || []).map(c => `<option value="${c.id}">${c.nombre}${c.empresa ? ' - ' + c.empresa : ''}</option>`).join('');
+
+      // Fecha por defecto: hoy
+      const hoy = new Date().toISOString().split('T')[0];
+      document.getElementById('tareaFecha').value = hoy;
+      document.getElementById('tareaDescripcion').value = '';
+      document.getElementById('tareaTipo').value = 'seguimiento';
+
+      modal.classList.add('active');
+
+    } catch (err) {
+      console.error('Error abriendo modal tarea:', err);
+      showNotification('❌ Error al cargar datos');
+    }
+  }
+
+  closeModalTarea() {
+    document.getElementById('modalTarea').classList.remove('active');
+  }
+
+  async handleTareaSubmit(e) {
+    e.preventDefault();
+
+    const tareaData = {
+      cliente_id: document.getElementById('tareaCliente').value || null,
+      comercial_id: this.currentUser.id,
+      descripcion: document.getElementById('tareaDescripcion').value,
+      fecha: document.getElementById('tareaFecha').value,
+      tipo: document.getElementById('tareaTipo').value,
+      completada: false
+    };
+
+    try {
+      const { error } = await supabaseClient
+        .from('tareas')
+        .insert([tareaData]);
+
+      if (error) throw error;
+
+      showNotification('✅ Tarea creada correctamente');
+      this.closeModalTarea();
+      this.loadTareas('pendientes');
+
+    } catch (err) {
+      console.error('Error creando tarea:', err);
+      showNotification('❌ Error al crear tarea');
+    }
+  }
+
+  async toggleTarea(id) {
+    try {
+      // Obtener estado actual
+      const { data: tarea } = await supabaseClient
+        .from('tareas')
+        .select('completada')
+        .eq('id', id)
+        .single();
+
+      if (!tarea) return;
+
+      // Cambiar estado
+      const { error } = await supabaseClient
+        .from('tareas')
+        .update({ completada: !tarea.completada })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showNotification(tarea.completada ? '📋 Tarea marcada como pendiente' : '✅ Tarea completada');
+      
+      // Recargar con el filtro actual
+      const filtroActual = document.querySelector('[id^="filtro-"].btn-blue')?.id.replace('filtro-', '') || 'pendientes';
+      this.loadTareas(filtroActual);
+
+    } catch (err) {
+      console.error('Error actualizando tarea:', err);
+      showNotification('❌ Error al actualizar tarea');
+    }
+  }
+
+  async deleteTarea(id) {
+    if (!confirm('¿Eliminar esta tarea?')) return;
+
+    try {
+      const { error } = await supabaseClient
+        .from('tareas')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showNotification('✅ Tarea eliminada');
+      
+      const filtroActual = document.querySelector('[id^="filtro-"].btn-blue')?.id.replace('filtro-', '') || 'pendientes';
+      this.loadTareas(filtroActual);
+
+    } catch (err) {
+      console.error('Error eliminando tarea:', err);
+      showNotification('❌ Error al eliminar tarea');
+    }
+  }
+
+  // ============================================
+  // FIN MÓDULO 6
+  // ============================================
+// ============================================
+  // MÓDULO 7: FINANZAS Y COMISIONES
+  // ============================================
+
+  renderFinanzasView() {
+    return `
+      <div>
+        <div class="flex justify-between mb-4">
+          <h2 class="text-2xl font-bold">Control Financiero</h2>
+          <button onclick="app.openModalFinanza()" class="btn btn-gold">+ Registrar Movimiento</button>
+        </div>
+
+        <!-- Resumen Financiero -->
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Total Ingresos</p>
+            <p class="text-3xl font-bold mt-2" id="totalIngresos">€0.00</p>
+          </div>
+          <div class="card" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Total Gastos</p>
+            <p class="text-3xl font-bold mt-2" id="totalGastos">€0.00</p>
+          </div>
+          <div class="card" style="background: linear-gradient(135deg, #D4A574, #C8A882); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Balance Neto</p>
+            <p class="text-3xl font-bold mt-2" id="balanceNeto">€0.00</p>
+          </div>
+        </div>
+
+        <!-- Comisiones (solo para CEO/Admin) -->
+        ${this.currentUser.rol !== 'comercial' ? `
+          <div class="card mb-4">
+            <h3 class="text-xl font-bold mb-4">Comisiones de Comerciales</h3>
+            <div id="comisionesList">
+              <p class="text-center text-gray-600">Cargando comisiones...</p>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Filtros -->
+        <div class="card mb-4">
+          <div class="flex gap-2" style="flex-wrap: wrap;">
+            <button onclick="app.filtrarFinanzas('todas')" class="btn btn-sm btn-blue" id="filtro-fin-todas">Todas</button>
+            <button onclick="app.filtrarFinanzas('ingresos')" class="btn btn-sm btn-gray" id="filtro-fin-ingresos">Ingresos</button>
+            <button onclick="app.filtrarFinanzas('gastos')" class="btn btn-sm btn-gray" id="filtro-fin-gastos">Gastos</button>
+            <button onclick="app.filtrarFinanzas('mes')" class="btn btn-sm btn-gray" id="filtro-fin-mes">Este Mes</button>
+          </div>
+        </div>
+
+        <!-- Lista de movimientos -->
+        <div class="card">
+          <h3 class="text-xl font-bold mb-4">Movimientos Recientes</h3>
+          <div id="finanzasList">
+            <p class="text-center text-gray-600">Cargando movimientos...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Finanza -->
+      <div id="modalFinanza" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="text-xl font-bold">Registrar Movimiento</h2>
+            <button onclick="app.closeModalFinanza()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
+          </div>
+          <form onsubmit="app.handleFinanzaSubmit(event)">
+            <div class="modal-body">
+              <div class="mb-4">
+                <label class="label">Tipo *</label>
+                <select id="finanzaTipo" class="select" required>
+                  <option value="gasto">Gasto</option>
+                  <option value="ingreso">Ingreso</option>
+                </select>
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Concepto *</label>
+                <input type="text" id="finanzaConcepto" class="input" required placeholder="Ej: Compra materias primas, Pago alquiler..." />
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Monto (€) *</label>
+                <input type="number" id="finanzaMonto" class="input" required min="0" step="0.01" />
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Categoría</label>
+                <select id="finanzaCategoria" class="select">
+                  <option value="">Seleccionar...</option>
+                  <option value="ventas">Ventas</option>
+                  <option value="materias_primas">Materias Primas</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="transporte">Transporte</option>
+                  <option value="alquiler">Alquiler</option>
+                  <option value="servicios">Servicios</option>
+                  <option value="nominas">Nóminas</option>
+                  <option value="otros">Otros</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" onclick="app.closeModalFinanza()" class="btn btn-gray">Cancelar</button>
+              <button type="submit" class="btn btn-gold">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  async loadFinanzas(filtro = 'todas') {
+    try {
+      let query = supabaseClient
+        .from('finanzas')
+        .select('*, comercial:usuarios!finanzas_comercial_id_fkey(nombre)')
+        .order('fecha', { ascending: false });
+
+      // Si es comercial, solo ver sus propios movimientos
+      if (this.currentUser.rol === 'comercial') {
+        query = query.eq('comercial_id', this.currentUser.id);
+      }
+
+      const { data: finanzas, error } = await query;
+      if (error) throw error;
+
+      // Aplicar filtros
+      let finanzasFiltradas = finanzas || [];
+      const hoy = new Date();
+      const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+
+      switch(filtro) {
+        case 'ingresos':
+          finanzasFiltradas = finanzasFiltradas.filter(f => f.tipo === 'ingreso');
+          break;
+        case 'gastos':
+          finanzasFiltradas = finanzasFiltradas.filter(f => f.tipo === 'gasto');
+          break;
+        case 'mes':
+          finanzasFiltradas = finanzasFiltradas.filter(f => f.fecha >= primerDiaMes);
+          break;
+      }
+
+      // Calcular totales
+      const ingresos = finanzas.filter(f => f.tipo === 'ingreso').reduce((sum, f) => sum + parseFloat(f.monto || 0), 0);
+      const gastos = finanzas.filter(f => f.tipo === 'gasto').reduce((sum, f) => sum + parseFloat(f.monto || 0), 0);
+      const balance = ingresos - gastos;
+
+      document.getElementById('totalIngresos').textContent = `€${ingresos.toFixed(2)}`;
+      document.getElementById('totalGastos').textContent = `€${gastos.toFixed(2)}`;
+      document.getElementById('balanceNeto').textContent = `€${balance.toFixed(2)}`;
+
+      // Actualizar botones activos
+      document.querySelectorAll('[id^="filtro-fin-"]').forEach(btn => {
+        btn.classList.remove('btn-blue');
+        btn.classList.add('btn-gray');
+      });
+      const btnActivo = document.getElementById(`filtro-fin-${filtro}`);
+      if (btnActivo) {
+        btnActivo.classList.remove('btn-gray');
+        btnActivo.classList.add('btn-blue');
+      }
+
+      const container = document.getElementById('finanzasList');
+      
+      if (finanzasFiltradas.length === 0) {
+        container.innerHTML = `
+          <p class="text-center text-gray-600 py-4">No hay movimientos ${filtro === 'todas' ? 'registrados' : 'en esta categoría'}</p>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="max-height: 500px; overflow-y: auto;">
+          ${finanzasFiltradas.map(f => `
+            <div class="mb-2" style="padding: 1rem; border-left: 4px solid ${f.tipo === 'ingreso' ? '#10b981' : '#ef4444'}; background: ${f.tipo === 'ingreso' ? '#f0fdf4' : '#fef2f2'}; border-radius: 8px;">
+              <div class="flex justify-between" style="align-items: flex-start;">
+                <div style="flex: 1;">
+                  <p class="font-bold" style="color: ${f.tipo === 'ingreso' ? '#065f46' : '#991b1b'};">${f.concepto}</p>
+                  <div class="flex gap-2 mt-1" style="flex-wrap: wrap; font-size: 0.875rem; color: #6b7280;">
+                    <span>📅 ${new Date(f.fecha).toLocaleDateString()}</span>
+                    ${f.categoria ? `<span class="badge" style="background: white;">🏷️ ${this.getCategoriaLabel(f.categoria)}</span>` : ''}
+                    ${this.currentUser.rol !== 'comercial' && f.comercial ? `<span class="badge" style="background: white;">👤 ${f.comercial.nombre}</span>` : ''}
+                  </div>
+                </div>
+                <div class="flex gap-2" style="align-items: center;">
+                  <p class="text-xl font-bold" style="color: ${f.tipo === 'ingreso' ? '#065f46' : '#991b1b'};">
+                    ${f.tipo === 'ingreso' ? '+' : '-'}€${parseFloat(f.monto).toFixed(2)}
+                  </p>
+                  ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
+                    <button onclick="app.deleteFinanza('${f.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1rem; color: #6b7280;">🗑️</button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // Cargar comisiones si es CEO/Admin
+      if (this.currentUser.rol !== 'comercial') {
+        this.loadComisiones();
+      }
+
+    } catch (err) {
+      console.error('Error cargando finanzas:', err);
+      document.getElementById('finanzasList').innerHTML = `
+        <p class="text-center" style="color: #ef4444;">Error cargando movimientos</p>
+      `;
+    }
+  }
+
+  async loadComisiones() {
+    try {
+      // Obtener comerciales con comisión configurada
+      const { data: comerciales } = await supabaseClient
+        .from('usuarios')
+        .select('id, nombre, comision_porcentaje')
+        .eq('rol', 'comercial')
+        .eq('activo', true)
+        .gt('comision_porcentaje', 0);
+
+      if (!comerciales || comerciales.length === 0) {
+        document.getElementById('comisionesList').innerHTML = `
+          <p class="text-center text-gray-600">No hay comerciales con comisiones configuradas</p>
+        `;
+        return;
+      }
+
+      // Calcular ventas y comisiones de cada comercial
+      const comisiones = await Promise.all(comerciales.map(async (c) => {
+        const { data: pedidos } = await supabaseClient
+          .from('pedidos')
+          .select('total')
+          .eq('comercial_id', c.id);
+
+        const totalVentas = pedidos ? pedidos.reduce((sum, p) => sum + parseFloat(p.total || 0), 0) : 0;
+        const comision = totalVentas * (c.comision_porcentaje / 100);
+
+        return {
+          nombre: c.nombre,
+          porcentaje: c.comision_porcentaje,
+          ventas: totalVentas,
+          comision: comision
+        };
+      }));
+
+      const container = document.getElementById('comisionesList');
+      container.innerHTML = `
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead style="background: #f9fafb;">
+              <tr>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Comercial</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">% Comisión</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Ventas Totales</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Comisión</th>
+              </tr>
+            </thead>
+            <tbody style="border-top: 1px solid #e5e7eb;">
+              ${comisiones.map(c => `
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 600;">${c.nombre}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">${c.porcentaje}%</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">€${c.ventas.toFixed(2)}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 700; color: #D4A574;">€${c.comision.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+              <tr style="background: #fef3c7; font-weight: 700;">
+                <td colspan="3" style="padding: 0.75rem; font-size: 0.875rem; text-align: right;">TOTAL COMISIONES:</td>
+                <td style="padding: 0.75rem; font-size: 0.875rem; color: #92400e;">€${comisiones.reduce((sum, c) => sum + c.comision, 0).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+
+    } catch (err) {
+      console.error('Error cargando comisiones:', err);
+    }
+  }
+
+  filtrarFinanzas(filtro) {
+    this.loadFinanzas(filtro);
+  }
+
+  getCategoriaLabel(categoria) {
+    const labels = {
+      ventas: 'Ventas',
+      materias_primas: 'Materias Primas',
+      marketing: 'Marketing',
+      transporte: 'Transporte',
+      alquiler: 'Alquiler',
+      servicios: 'Servicios',
+      nominas: 'Nóminas',
+      otros: 'Otros'
+    };
+    return labels[categoria] || categoria;
+  }
+
+  // ============================================
+  // MODAL FINANZA
+  // ============================================
+
+  openModalFinanza() {
+    const modal = document.getElementById('modalFinanza');
+    document.getElementById('finanzaTipo').value = 'gasto';
+    document.getElementById('finanzaConcepto').value = '';
+    document.getElementById('finanzaMonto').value = '';
+    document.getElementById('finanzaCategoria').value = '';
+    modal.classList.add('active');
+  }
+
+  closeModalFinanza() {
+    document.getElementById('modalFinanza').classList.remove('active');
+  }
+
+  async handleFinanzaSubmit(e) {
+    e.preventDefault();
+
+    const finanzaData = {
+      tipo: document.getElementById('finanzaTipo').value,
+      concepto: document.getElementById('finanzaConcepto').value,
+      monto: parseFloat(document.getElementById('finanzaMonto').value),
+      categoria: document.getElementById('finanzaCategoria').value || null,
+      comercial_id: this.currentUser.id,
+      fecha: new Date().toISOString()
+    };
+
+    try {
+      const { error } = await supabaseClient
+        .from('finanzas')
+        .insert([finanzaData]);
+
+      if (error) throw error;
+
+      showNotification(`✅ ${finanzaData.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado correctamente`);
+      this.closeModalFinanza();
+      this.loadFinanzas('todas');
+
+    } catch (err) {
+      console.error('Error registrando movimiento:', err);
+      showNotification('❌ Error al registrar movimiento');
+    }
+  }
+
+  async deleteFinanza(id) {
+    if (!confirm('¿Eliminar este movimiento?')) return;
+
+    try {
+      const { error } = await supabaseClient
+        .from('finanzas')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showNotification('✅ Movimiento eliminado');
+      
+      const filtroActual = document.querySelector('[id^="filtro-fin-"].btn-blue')?.id.replace('filtro-fin-', '') || 'todas';
+      this.loadFinanzas(filtroActual);
+
+    } catch (err) {
+      console.error('Error eliminando movimiento:', err);
+      showNotification('❌ Error al eliminar movimiento');
+    }
+  }
+
+  // ============================================
+  // FIN MÓDULO 7
+  // ============================================
+// ============================================
+  // MÓDULO 8: GESTIÓN DE USUARIOS
+  // ============================================
+
+  renderUsuariosView() {
+    return `
+      <div>
+        <div class="flex justify-between mb-4">
+          <h2 class="text-2xl font-bold">Gestión de Usuarios</h2>
+          <button onclick="app.openModalUsuario()" class="btn btn-gold">+ Nuevo Usuario</button>
+        </div>
+
+        <!-- Resumen de usuarios -->
+        <div class="grid grid-2 mb-4">
+          <div class="card" style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Total Usuarios</p>
+            <p class="text-3xl font-bold mt-2" id="totalUsuarios">0</p>
+          </div>
+          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Usuarios Activos</p>
+            <p class="text-3xl font-bold mt-2" id="usuariosActivos">0</p>
+          </div>
+        </div>
+
+        <!-- Lista de usuarios -->
+        <div id="usuariosList" class="grid">
+          <div class="card text-center py-8">
+            <p class="text-gray-600">Cargando usuarios...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Usuario -->
+      <div id="modalUsuario" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="text-xl font-bold" id="modalUsuarioTitle">Nuevo Usuario</h2>
+            <button onclick="app.closeModalUsuario()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
+          </div>
+          <form onsubmit="app.handleUsuarioSubmit(event)">
+            <div class="modal-body">
+              <div class="mb-4">
+                <label class="label">Nombre Completo *</label>
+                <input type="text" id="usuarioNombre" class="input" required placeholder="Ej: Juan Pérez" />
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Email *</label>
+                <input type="email" id="usuarioEmail" class="input" required placeholder="usuario@versum.com" />
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Contraseña *</label>
+                <input type="text" id="usuarioPassword" class="input" required placeholder="Mínimo 6 caracteres" minlength="6" />
+                <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">El usuario podrá cambiarla después del primer login</p>
+              </div>
+
+              <div class="grid grid-2">
+                <div class="mb-4">
+                  <label class="label">Rol *</label>
+                  <select id="usuarioRol" class="select" required onchange="app.updateComisionField()">
+                    <option value="comercial">Comercial</option>
+                    <option value="admin">Administrador</option>
+                    ${this.currentUser.rol === 'ceo' ? '<option value="ceo">CEO</option>' : ''}
+                  </select>
+                </div>
+                <div class="mb-4" id="comisionField">
+                  <label class="label">Comisión (%)</label>
+                  <input type="number" id="usuarioComision" class="input" min="0" max="100" step="0.1" value="0" />
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                  <input type="checkbox" id="usuarioActivo" checked style="width: 1.25rem; height: 1.25rem; cursor: pointer;" />
+                  <span class="font-bold">Usuario Activo</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" onclick="app.closeModalUsuario()" class="btn btn-gray">Cancelar</button>
+              <button type="submit" class="btn btn-gold" id="btnGuardarUsuario">Guardar Usuario</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Resetear Contraseña -->
+      <div id="modalResetPassword" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+          <div class="modal-header">
+            <h2 class="text-xl font-bold">Resetear Contraseña</h2>
+            <button onclick="app.closeModalResetPassword()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
+          </div>
+          <form onsubmit="app.handleResetPasswordSubmit(event)">
+            <div class="modal-body">
+              <p class="mb-4 text-gray-600">Usuario: <strong id="resetPasswordNombre"></strong></p>
+              <div class="mb-4">
+                <label class="label">Nueva Contraseña *</label>
+                <input type="text" id="resetPasswordNueva" class="input" required placeholder="Mínimo 6 caracteres" minlength="6" />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" onclick="app.closeModalResetPassword()" class="btn btn-gray">Cancelar</button>
+              <button type="submit" class="btn btn-gold">Resetear Contraseña</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  async loadUsuarios() {
+    try {
+      const { data: usuarios, error } = await supabaseClient
+        .from('usuarios')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Actualizar contadores
+      document.getElementById('totalUsuarios').textContent = usuarios.length;
+      document.getElementById('usuariosActivos').textContent = usuarios.filter(u => u.activo).length;
+
+      const container = document.getElementById('usuariosList');
+      
+      if (!usuarios || usuarios.length === 0) {
+        container.innerHTML = `
+          <div class="card text-center py-8">
+            <p class="text-gray-600 mb-4">No hay usuarios registrados</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = usuarios.map(u => `
+        <div class="card">
+          <div class="flex justify-between" style="align-items: flex-start;">
+            <div style="flex: 1;">
+              <div class="flex gap-2 mb-2" style="align-items: center; flex-wrap: wrap;">
+                <h3 class="text-lg font-bold">${u.nombre}</h3>
+                <span class="badge ${this.getRolBadgeColor(u.rol)}">${this.getRolLabel(u.rol)}</span>
+                ${!u.activo ? '<span class="badge" style="background: #fef2f2; color: #dc2626;">Inactivo</span>' : ''}
+              </div>
+              
+              <p class="text-gray-600">📧 ${u.email}</p>
+              
+              ${u.comision_porcentaje > 0 ? `
+                <p class="text-gray-600 mt-1">💰 Comisión: <strong>${u.comision_porcentaje}%</strong></p>
+              ` : ''}
+              
+              <p style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.5rem;">
+                Creado: ${new Date(u.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+            
+            <div class="flex gap-2" style="align-items: flex-start; flex-wrap: wrap;">
+              ${u.id !== this.currentUser.id ? `
+                <button 
+                  onclick="app.toggleUsuarioActivo('${u.id}', ${u.activo})" 
+                  class="btn btn-sm ${u.activo ? 'btn-red' : 'btn-blue'}"
+                  style="font-size: 0.75rem;"
+                >
+                  ${u.activo ? 'Desactivar' : 'Activar'}
+                </button>
+                <button 
+                  onclick="app.openModalResetPassword('${u.id}', '${u.nombre.replace(/'/g, "\\'")}')" 
+                  class="btn btn-sm btn-gray"
+                  style="font-size: 0.75rem;"
+                >
+                  Resetear Contraseña
+                </button>
+                <button 
+                  onclick="app.editUsuario('${u.id}')" 
+                  style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem;"
+                  title="Editar"
+                >
+                  ✏️
+                </button>
+              ` : `
+                <span class="badge badge-blue">Tú</span>
+              `}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      console.error('Error cargando usuarios:', err);
+      document.getElementById('usuariosList').innerHTML = `
+        <div class="card text-center py-8">
+          <p style="color: #ef4444;">Error cargando usuarios</p>
+        </div>
+      `;
+    }
+  }
+
+  getRolBadgeColor(rol) {
+    const colors = {
+      ceo: 'badge' + ' ' + 'badge-orange',
+      admin: 'badge-green',
+      comercial: 'badge-blue'
+    };
+    return 'badge ' + (colors[rol] || 'badge-blue');
+  }
+
+  getRolLabel(rol) {
+    const labels = {
+      ceo: '👑 CEO',
+      admin: '⚙️ Administrador',
+      comercial: '💼 Comercial'
+    };
+    return labels[rol] || rol;
+  }
+
+  // ============================================
+  // MODAL USUARIO
+  // ============================================
+
+  openModalUsuario(usuario = null) {
+    this.editingUsuario = usuario;
+    const modal = document.getElementById('modalUsuario');
+    const title = document.getElementById('modalUsuarioTitle');
+    const btn = document.getElementById('btnGuardarUsuario');
+
+    if (usuario) {
+      // Modo edición
+      title.textContent = 'Editar Usuario';
+      btn.textContent = 'Actualizar Usuario';
+      document.getElementById('usuarioNombre').value = usuario.nombre || '';
+      document.getElementById('usuarioEmail').value = usuario.email || '';
+      document.getElementById('usuarioPassword').value = '';
+      document.getElementById('usuarioPassword').placeholder = 'Dejar en blanco para no cambiar';
+      document.getElementById('usuarioPassword').required = false;
+      document.getElementById('usuarioRol').value = usuario.rol || 'comercial';
+      document.getElementById('usuarioComision').value = usuario.comision_porcentaje || 0;
+      document.getElementById('usuarioActivo').checked = usuario.activo !== false;
+    } else {
+      // Modo creación
+      title.textContent = 'Nuevo Usuario';
+      btn.textContent = 'Guardar Usuario';
+      document.getElementById('usuarioNombre').value = '';
+      document.getElementById('usuarioEmail').value = '';
+      document.getElementById('usuarioPassword').value = '';
+      document.getElementById('usuarioPassword').placeholder = 'Mínimo 6 caracteres';
+      document.getElementById('usuarioPassword').required = true;
+      document.getElementById('usuarioRol').value = 'comercial';
+      document.getElementById('usuarioComision').value = 0;
+      document.getElementById('usuarioActivo').checked = true;
+    }
+
+    this.updateComisionField();
+    modal.classList.add('active');
+  }
+
+  closeModalUsuario() {
+    document.getElementById('modalUsuario').classList.remove('active');
+    this.editingUsuario = null;
+  }
+
+  updateComisionField() {
+    const rol = document.getElementById('usuarioRol').value;
+    const comisionField = document.getElementById('comisionField');
+    
+    if (rol === 'comercial') {
+      comisionField.style.display = 'block';
+    } else {
+      comisionField.style.display = 'none';
+      document.getElementById('usuarioComision').value = 0;
+    }
+  }
+
+  async handleUsuarioSubmit(e) {
+    e.preventDefault();
+
+    const usuarioData = {
+      nombre: document.getElementById('usuarioNombre').value,
+      email: document.getElementById('usuarioEmail').value,
+      rol: document.getElementById('usuarioRol').value,
+      activo: document.getElementById('usuarioActivo').checked,
+      comision_porcentaje: parseFloat(document.getElementById('usuarioComision').value) || 0
+    };
+
+    const password = document.getElementById('usuarioPassword').value;
+
+    try {
+      if (this.editingUsuario) {
+        // Actualizar usuario existente
+        const updateData = { ...usuarioData };
+        
+        // Si hay nueva contraseña, actualizarla
+        if (password) {
+          updateData.password_hash = password;
+        }
+
+        const { error } = await supabaseClient
+          .from('usuarios')
+          .update(updateData)
+          .eq('id', this.editingUsuario.id);
+
+        if (error) throw error;
+
+        showNotification('✅ Usuario actualizado correctamente');
+        
+        // Si editó su propio usuario, actualizar sesión
+        if (this.editingUsuario.id === this.currentUser.id) {
+          this.currentUser = { ...this.currentUser, ...usuarioData };
+          localStorage.setItem('versum_user', JSON.stringify(this.currentUser));
+        }
+
+      } else {
+        // Crear nuevo usuario
+        usuarioData.password_hash = password;
+        usuarioData.created_at = new Date().toISOString();
+
+        const { error } = await supabaseClient
+          .from('usuarios')
+          .insert([usuarioData]);
+
+        if (error) {
+          if (error.code === '23505') {
+            showNotification('❌ Este email ya está registrado');
+            return;
+          }
+          throw error;
+        }
+
+        showNotification('✅ Usuario creado correctamente');
+      }
+
+      this.closeModalUsuario();
+      this.loadUsuarios();
+      await this.loadComerciales(); // Actualizar lista de comerciales
+
+    } catch (err) {
+      console.error('Error guardando usuario:', err);
+      showNotification('❌ Error al guardar usuario');
+    }
+  }
+
+  async editUsuario(id) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('usuarios')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      this.openModalUsuario(data);
+    } catch (err) {
+      console.error('Error cargando usuario:', err);
+      showNotification('❌ Error al cargar usuario');
+    }
+  }
+
+  async toggleUsuarioActivo(id, activo) {
+    const accion = activo ? 'desactivar' : 'activar';
+    if (!confirm(`¿Seguro que quieres ${accion} este usuario?`)) return;
+
+    try {
+      const { error } = await supabaseClient
+        .from('usuarios')
+        .update({ activo: !activo })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showNotification(`✅ Usuario ${activo ? 'desactivado' : 'activado'}`);
+      this.loadUsuarios();
+      await this.loadComerciales(); // Actualizar lista de comerciales
+
+    } catch (err) {
+      console.error('Error actualizando usuario:', err);
+      showNotification('❌ Error al actualizar usuario');
+    }
+  }
+
+  // ============================================
+  // RESETEAR CONTRASEÑA
+  // ============================================
+
+  openModalResetPassword(id, nombre) {
+    this.resetPasswordUserId = id;
+    const modal = document.getElementById('modalResetPassword');
+    document.getElementById('resetPasswordNombre').textContent = nombre;
+    document.getElementById('resetPasswordNueva').value = '';
+    modal.classList.add('active');
+  }
+
+  closeModalResetPassword() {
+    document.getElementById('modalResetPassword').classList.remove('active');
+    this.resetPasswordUserId = null;
+  }
+
+  async handleResetPasswordSubmit(e) {
+    e.preventDefault();
+
+    const nuevaPassword = document.getElementById('resetPasswordNueva').value;
+
+    try {
+      const { error } = await supabaseClient
+        .from('usuarios')
+        .update({ password_hash: nuevaPassword })
+        .eq('id', this.resetPasswordUserId);
+
+      if (error) throw error;
+
+      showNotification('✅ Contraseña reseteada correctamente');
+      this.closeModalResetPassword();
+
+    } catch (err) {
+      console.error('Error reseteando contraseña:', err);
+      showNotification('❌ Error al resetear contraseña');
+    }
+  }
+
+  // ============================================
+  // FIN MÓDULO 8
   // ============================================
 }// Inicializar aplicación
 const app = new VersumCRM();
