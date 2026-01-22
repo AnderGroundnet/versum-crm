@@ -2417,8 +2417,416 @@ class VersumCRM {
   // ============================================
   // FIN MÓDULO 8
   // ============================================
+  // ============================================
+// MODIFICACIÓN 5: EDITAR PEDIDOS
+// ============================================
+// Pega esto DENTRO de la clase VersumCRM, en el Módulo 5
+// Reemplaza las funciones relacionadas con pedidos
+
+// MODIFICAR: Actualizar loadPedidos para añadir botón de editar
+async loadPedidos() {
+  try {
+    let query = supabaseClient
+      .from('pedidos')
+      .select(`
+        *,
+        cliente:clientes(nombre, empresa),
+        producto:productos(nombre),
+        comercial:usuarios!pedidos_comercial_id_fkey(nombre)
+      `)
+      .order('fecha', { ascending: false })
+      .limit(20);
+
+    if (this.currentUser.rol === 'comercial') {
+      query = query.eq('comercial_id', this.currentUser.id);
+    }
+
+    const { data: pedidos, error } = await query;
+    if (error) throw error;
+
+    const container = document.getElementById('pedidosList');
+    
+    if (!pedidos || pedidos.length === 0) {
+      container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>';
+      return;
+    }
+
+    const puedeEditarTodos = this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin';
+
+    container.innerHTML = `
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead style="background: #f9fafb;">
+            <tr>
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Fecha</th>
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Cliente</th>
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Producto</th>
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Cantidad</th>
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Precio Unit.</th>
+              ${this.currentUser.rol !== 'comercial' ? '<th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Comercial</th>' : ''}
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Total</th>
+              <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody style="border-top: 1px solid #e5e7eb;">
+            ${pedidos.map(p => {
+              const puedeEditar = puedeEditarTodos || p.comercial_id === this.currentUser.id;
+              return `
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">${new Date(p.fecha).toLocaleDateString()}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 600;">${p.cliente?.nombre || 'N/A'}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">${p.producto?.nombre || 'N/A'}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">${p.cantidad}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">€${parseFloat(p.precio_unitario).toFixed(2)}</td>
+                  ${this.currentUser.rol !== 'comercial' ? `<td style="padding: 0.75rem; font-size: 0.875rem;">${p.comercial?.nombre || 'N/A'}</td>` : ''}
+                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 700; color: #D4A574;">€${parseFloat(p.total).toFixed(2)}</td>
+                  <td style="padding: 0.75rem; font-size: 0.875rem;">
+                    ${puedeEditar ? `
+                      <button 
+                        onclick="app.editPedido('${p.id}')" 
+                        style="background: none; border: none; cursor: pointer; padding: 0.25rem; font-size: 1rem;"
+                        title="Editar"
+                      >
+                        ✏️
+                      </button>
+                      <button 
+                        onclick="app.deletePedido('${p.id}')" 
+                        style="background: none; border: none; cursor: pointer; padding: 0.25rem; font-size: 1rem; color: #ef4444;"
+                        title="Eliminar"
+                      >
+                        🗑️
+                      </button>
+                    ` : '<span style="color: #9ca3af;">—</span>'}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+  } catch (err) {
+    console.error('Error cargando pedidos:', err);
+  }
+}
+
+// NUEVA FUNCIÓN: Editar pedido
+async editPedido(id) {
+  try {
+    // Cargar datos del pedido
+    const { data: pedido, error } = await supabaseClient
+      .from('pedidos')
+      .select(`
+        *,
+        cliente:clientes(id, nombre, empresa),
+        producto:productos(id, nombre, stock, precio)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+
+    this.editingPedido = pedido;
+    
+    // Abrir modal con datos precargados
+    await this.openModalEditarPedido(pedido);
+
+  } catch (err) {
+    console.error('Error cargando pedido:', err);
+    showNotification('❌ Error al cargar pedido');
+  }
+}
+
+// NUEVA FUNCIÓN: Modal editar pedido
+async openModalEditarPedido(pedido) {
+  const modal = document.createElement('div');
+  modal.id = 'modalEditarPedido';
+  modal.className = 'modal active';
+  
+  // Cargar clientes y productos
+  let clientesQuery = supabaseClient
+    .from('clientes')
+    .select('id, nombre, empresa')
+    .eq('fase', 'cliente')
+    .order('nombre', { ascending: true });
+
+  if (this.currentUser.rol === 'comercial') {
+    clientesQuery = clientesQuery.eq('asignado_a', this.currentUser.id);
+  }
+
+  const { data: clientes } = await clientesQuery;
+  const { data: productos } = await supabaseClient
+    .from('productos')
+    .select('*')
+    .order('nombre', { ascending: true });
+
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="text-xl font-bold">Editar Pedido</h2>
+        <button onclick="document.getElementById('modalEditarPedido').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
+      </div>
+      <form onsubmit="app.handleEditarPedidoSubmit(event)">
+        <div class="modal-body">
+          <div class="mb-4">
+            <label class="label">Cliente *</label>
+            <select id="editPedidoCliente" class="select" required>
+              ${(clientes || []).map(c => `
+                <option value="${c.id}" ${c.id === pedido.cliente_id ? 'selected' : ''}>
+                  ${c.nombre}${c.empresa ? ' - ' + c.empresa : ''}
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="mb-4">
+            <label class="label">Producto *</label>
+            <select id="editPedidoProducto" class="select" required onchange="app.updateEditPedidoPrecio()">
+              ${(productos || []).map(p => `
+                <option value="${p.id}" data-precio="${p.precio}" data-stock="${p.stock}" ${p.id === pedido.producto_id ? 'selected' : ''}>
+                  ${p.nombre} (Stock: ${p.stock}${pedido.producto_id === p.id ? ' + ' + pedido.cantidad : ''})
+                </option>
+              `).join('')}
+            </select>
+            <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+              Stock actual incluye la cantidad de este pedido
+            </p>
+          </div>
+
+          <div class="grid grid-2">
+            <div class="mb-4">
+              <label class="label">Cantidad *</label>
+              <input 
+                type="number" 
+                id="editPedidoCantidad" 
+                class="input" 
+                required 
+                min="1" 
+                value="${pedido.cantidad}"
+                oninput="app.calcularEditTotalPedido()" 
+              />
+            </div>
+            <div class="mb-4">
+              <label class="label">Precio Unitario (€)</label>
+              <input 
+                type="number" 
+                id="editPedidoPrecio" 
+                class="input" 
+                required 
+                min="0" 
+                step="0.01" 
+                value="${pedido.precio_unitario}"
+                oninput="app.calcularEditTotalPedido()" 
+              />
+            </div>
+          </div>
+
+          <div class="mb-4" style="background: #fef3c7; padding: 1rem; border-radius: 8px;">
+            <p style="font-weight: 600;">Total: <span id="editPedidoTotal">€${parseFloat(pedido.total).toFixed(2)}</span></p>
+          </div>
+
+          <input type="hidden" id="editPedidoId" value="${pedido.id}" />
+          <input type="hidden" id="editPedidoCantidadOriginal" value="${pedido.cantidad}" />
+          <input type="hidden" id="editPedidoProductoIdOriginal" value="${pedido.producto_id}" />
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" onclick="document.getElementById('modalEditarPedido').remove()" class="btn btn-gray">Cancelar</button>
+          <button type="submit" class="btn btn-gold">Actualizar Pedido</button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+// NUEVA FUNCIÓN: Actualizar precio al cambiar producto en edición
+updateEditPedidoPrecio() {
+  const select = document.getElementById('editPedidoProducto');
+  const selectedOption = select.options[select.selectedIndex];
+  const precio = selectedOption.getAttribute('data-precio');
+  document.getElementById('editPedidoPrecio').value = precio || 0;
+  this.calcularEditTotalPedido();
+}
+
+// NUEVA FUNCIÓN: Calcular total en edición
+calcularEditTotalPedido() {
+  const cantidad = parseFloat(document.getElementById('editPedidoCantidad').value) || 0;
+  const precio = parseFloat(document.getElementById('editPedidoPrecio').value) || 0;
+  const total = cantidad * precio;
+  document.getElementById('editPedidoTotal').textContent = `€${total.toFixed(2)}`;
+}
+
+// NUEVA FUNCIÓN: Manejar actualización de pedido
+async handleEditarPedidoSubmit(e) {
+  e.preventDefault();
+
+  const pedidoId = document.getElementById('editPedidoId').value;
+  const clienteId = document.getElementById('editPedidoCliente').value;
+  const productoIdNuevo = document.getElementById('editPedidoProducto').value;
+  const cantidadNueva = parseInt(document.getElementById('editPedidoCantidad').value);
+  const precioUnitario = parseFloat(document.getElementById('editPedidoPrecio').value);
+  const total = cantidadNueva * precioUnitario;
+
+  const cantidadOriginal = parseInt(document.getElementById('editPedidoCantidadOriginal').value);
+  const productoIdOriginal = document.getElementById('editPedidoProductoIdOriginal').value;
+
+  try {
+    // 1. Restaurar stock del producto original
+    if (productoIdOriginal) {
+      const { data: productoOriginal } = await supabaseClient
+        .from('productos')
+        .select('stock')
+        .eq('id', productoIdOriginal)
+        .single();
+
+      if (productoOriginal) {
+        await supabaseClient
+          .from('productos')
+          .update({ stock: productoOriginal.stock + cantidadOriginal })
+          .eq('id', productoIdOriginal);
+      }
+    }
+
+    // 2. Verificar stock del producto nuevo
+    const { data: productoNuevo } = await supabaseClient
+      .from('productos')
+      .select('stock')
+      .eq('id', productoIdNuevo)
+      .single();
+
+    if (!productoNuevo || productoNuevo.stock < cantidadNueva) {
+      showNotification(`❌ Stock insuficiente. Disponible: ${productoNuevo?.stock || 0}`);
+      
+      // Revertir stock del producto original
+      if (productoIdOriginal) {
+        const { data: productoOriginal } = await supabaseClient
+          .from('productos')
+          .select('stock')
+          .eq('id', productoIdOriginal)
+          .single();
+        
+        await supabaseClient
+          .from('productos')
+          .update({ stock: productoOriginal.stock - cantidadOriginal })
+          .eq('id', productoIdOriginal);
+      }
+      return;
+    }
+
+    // 3. Descontar stock del producto nuevo
+    await supabaseClient
+      .from('productos')
+      .update({ stock: productoNuevo.stock - cantidadNueva })
+      .eq('id', productoIdNuevo);
+
+    // 4. Actualizar pedido
+    const { error: errorPedido } = await supabaseClient
+      .from('pedidos')
+      .update({
+        cliente_id: clienteId,
+        producto_id: productoIdNuevo,
+        cantidad: cantidadNueva,
+        precio_unitario: precioUnitario,
+        total: total
+      })
+      .eq('id', pedidoId);
+
+    if (errorPedido) throw errorPedido;
+
+    // 5. Actualizar finanzas si cambió el total
+    const diferencia = total - (cantidadOriginal * precioUnitario);
+    if (diferencia !== 0) {
+      await supabaseClient
+        .from('finanzas')
+        .insert([{
+          tipo: diferencia > 0 ? 'ingreso' : 'gasto',
+          concepto: `Ajuste de pedido (${diferencia > 0 ? '+' : ''}${diferencia.toFixed(2)})`,
+          monto: Math.abs(diferencia),
+          categoria: 'ventas',
+          comercial_id: this.currentUser.id,
+          fecha: new Date().toISOString()
+        }]);
+    }
+
+    showNotification('✅ Pedido actualizado correctamente');
+    document.getElementById('modalEditarPedido').remove();
+    this.loadProductos();
+
+  } catch (err) {
+    console.error('Error actualizando pedido:', err);
+    showNotification('❌ Error al actualizar pedido');
+  }
+}
+
+// NUEVA FUNCIÓN: Eliminar pedido
+async deletePedido(id) {
+  if (!confirm('¿Eliminar este pedido? El stock se restaurará automáticamente.')) return;
+
+  try {
+    // Obtener datos del pedido
+    const { data: pedido } = await supabaseClient
+      .from('pedidos')
+      .select('producto_id, cantidad, total')
+      .eq('id', id)
+      .single();
+
+    if (!pedido) {
+      showNotification('❌ Pedido no encontrado');
+      return;
+    }
+
+    // Restaurar stock
+    const { data: producto } = await supabaseClient
+      .from('productos')
+      .select('stock')
+      .eq('id', pedido.producto_id)
+      .single();
+
+    if (producto) {
+      await supabaseClient
+        .from('productos')
+        .update({ stock: producto.stock + pedido.cantidad })
+        .eq('id', pedido.producto_id);
+    }
+
+    // Eliminar pedido
+    const { error } = await supabaseClient
+      .from('pedidos')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    // Registrar ajuste en finanzas
+    await supabaseClient
+      .from('finanzas')
+      .insert([{
+        tipo: 'gasto',
+        concepto: `Pedido eliminado (devolución)`,
+        monto: pedido.total,
+        categoria: 'ventas',
+        comercial_id: this.currentUser.id,
+        fecha: new Date().toISOString()
+      }]);
+
+    showNotification('✅ Pedido eliminado y stock restaurado');
+    this.loadProductos();
+
+  } catch (err) {
+    console.error('Error eliminando pedido:', err);
+    showNotification('❌ Error al eliminar pedido');
+  }
+}
+
+// ============================================
+// FIN MODIFICACIÓN 5
+// ============================================
 }// Inicializar aplicación
 const app = new VersumCRM();
   </script>
 </body>
 </html>
+
