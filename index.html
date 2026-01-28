@@ -99,6 +99,7 @@ class VersumCRM {
     this.currentTab = 'clientes';
     this.editingCliente = null;
     this.comerciales = [];
+    this.pedidoItems = []; // Array para almacenar productos en el pedido actual
     this.init();
   }
 
@@ -841,15 +842,16 @@ class VersumCRM {
         </div>
       </div>
 
-      <!-- Modal Pedido -->
+      <!-- Modal Pedido MEJORADO -->
       <div id="modalPedido" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 800px;">
           <div class="modal-header">
-            <h2 class="text-xl font-bold">Nuevo Pedido</h2>
+            <h2 class="text-xl font-bold">Nuevo Pedido (Múltiples Productos)</h2>
             <button onclick="app.closeModalPedido()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
           </div>
           <form onsubmit="app.handlePedidoSubmit(event)">
             <div class="modal-body">
+              <!-- Selección de Cliente -->
               <div class="mb-4">
                 <label class="label">Cliente *</label>
                 <select id="pedidoCliente" class="select" required>
@@ -857,32 +859,75 @@ class VersumCRM {
                 </select>
               </div>
 
-              <div class="mb-4">
-                <label class="label">Producto *</label>
-                <select id="pedidoProducto" class="select" required onchange="app.updatePedidoPrecio()">
-                  <option value="">Seleccionar producto...</option>
-                </select>
+              <!-- Sección de Productos -->
+              <div style="border: 2px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <h3 class="text-lg font-bold mb-4">Agregar Productos al Pedido</h3>
+                
+                <div class="grid grid-2 gap-2 mb-3">
+                  <div>
+                    <label class="label">Producto *</label>
+                    <select id="pedidoProducto" class="select" required onchange="app.updatePrecioProductoModal()">
+                      <option value="">Seleccionar producto...</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="label">Cantidad *</label>
+                    <input type="number" id="pedidoCantidad" class="input" required min="1" value="1" />
+                  </div>
+                </div>
+
+                <div class="grid grid-2 gap-2 mb-3">
+                  <div>
+                    <label class="label">Precio Unitario (€)</label>
+                    <input type="number" id="pedidoPrecio" class="input" required min="0" step="0.01" />
+                  </div>
+                  <div>
+                    <label class="label">Descuento por unidad (€)</label>
+                    <input type="number" id="pedidoDescuentoUnit" class="input" min="0" step="0.01" value="0" />
+                  </div>
+                </div>
+
+                <button type="button" onclick="app.agregarProductoAlPedido()" class="btn btn-blue" style="width: 100%;">+ Agregar Producto al Pedido</button>
               </div>
 
-              <div class="grid grid-2">
-                <div class="mb-4">
-                  <label class="label">Cantidad *</label>
-                  <input type="number" id="pedidoCantidad" class="input" required min="1" oninput="app.calcularTotalPedido()" />
-                </div>
-                <div class="mb-4">
-                  <label class="label">Precio Unitario (€)</label>
-                  <input type="number" id="pedidoPrecio" class="input" required min="0" step="0.01" oninput="app.calcularTotalPedido()" />
-                </div>
+              <!-- Lista de Productos Agregados -->
+              <div id="pedidoItemsList" style="border: 1px solid #d1d5db; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; min-height: 100px; background: #f9fafb;">
+                <p class="text-gray-600 text-center">No hay productos agregados</p>
               </div>
 
-              <div class="mb-4" style="background: #fef3c7; padding: 1rem; border-radius: 8px;">
-                <p style="font-weight: 600;">Total: <span id="pedidoTotal">€0.00</span></p>
+              <!-- Descuentos y Total -->
+              <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                <div class="grid grid-2 gap-2 mb-3">
+                  <div>
+                    <label class="label">Descuento Total Pedido (€)</label>
+                    <input type="number" id="pedidoDescuentoTotal" class="input" min="0" step="0.01" value="0" oninput="app.calcularTotalPedido()" />
+                  </div>
+                  <div>
+                    <label class="label">Descuento Porcentaje (%)</label>
+                    <input type="number" id="pedidoDescuentoPct" class="input" min="0" max="100" step="0.01" value="0" oninput="app.calcularTotalPedido()" />
+                  </div>
+                </div>
+
+                <div style="border-top: 2px solid #bfdbfe; padding-top: 1rem;">
+                  <div class="flex justify-between mb-2" style="font-size: 1.125rem; font-weight: 600;">
+                    <span>Subtotal:</span>
+                    <span id="pedidoSubtotal">€0.00</span>
+                  </div>
+                  <div class="flex justify-between mb-2" style="color: #dc2626;">
+                    <span>Descuentos:</span>
+                    <span id="pedidoTotalDescuentos">€0.00</span>
+                  </div>
+                  <div class="flex justify-between" style="font-size: 1.25rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;">
+                    <span>TOTAL:</span>
+                    <span id="pedidoTotal">€0.00</span>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalPedido()" class="btn btn-gray">Cancelar</button>
-              <button type="submit" class="btn btn-gold">Registrar Pedido</button>
+              <button type="submit" class="btn btn-gold">Registrar Pedido Completo</button>
             </div>
           </form>
         </div>
@@ -955,11 +1000,10 @@ class VersumCRM {
         .select(`
           *,
           cliente:clientes(nombre, empresa),
-          producto:productos(nombre),
           comercial:usuarios!pedidos_comercial_id_fkey(nombre)
         `)
         .order('fecha', { ascending: false })
-        .limit(20);
+        .limit(50);
 
       if (this.currentUser.rol === 'comercial') {
         query = query.eq('comercial_id', this.currentUser.id);
@@ -975,34 +1019,61 @@ class VersumCRM {
         return;
       }
 
-      container.innerHTML = `
-        <div style="overflow-x: auto;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <thead style="background: #f9fafb;">
-              <tr>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Fecha</th>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Cliente</th>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Producto</th>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Cantidad</th>
-                ${this.currentUser.rol !== 'comercial' ? '<th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Comercial</th>' : ''}
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem; color: #374151;">Total</th>
-              </tr>
-            </thead>
-            <tbody style="border-top: 1px solid #e5e7eb;">
-              ${pedidos.map(p => `
-                <tr style="border-bottom: 1px solid #e5e7eb;">
-                  <td style="padding: 0.75rem; font-size: 0.875rem;">${new Date(p.fecha).toLocaleDateString()}</td>
-                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 600;">${p.cliente?.nombre || 'N/A'}</td>
-                  <td style="padding: 0.75rem; font-size: 0.875rem;">${p.producto?.nombre || 'N/A'}</td>
-                  <td style="padding: 0.75rem; font-size: 0.875rem;">${p.cantidad}</td>
-                  ${this.currentUser.rol !== 'comercial' ? `<td style="padding: 0.75rem; font-size: 0.875rem;">${p.comercial?.nombre || 'N/A'}</td>` : ''}
-                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 700; color: #D4A574;">€${parseFloat(p.total).toFixed(2)}</td>
-                </tr>
+      container.innerHTML = pedidos.map(ped => {
+        const items = ped.items_json || [];
+        const descuentoTotal = ped.descuento_total || 0;
+        const descuentoPct = ped.descuento_porcentaje || 0;
+        const subtotal = ped.subtotal || 0;
+        const totalDescuentos = descuentoTotal + ((subtotal * descuentoPct) / 100);
+        
+        return `
+          <div class="card" style="margin-bottom: 1rem;">
+            <div class="flex justify-between mb-3">
+              <div>
+                <h4 class="font-bold">${ped.cliente?.nombre || 'Cliente N/A'}${ped.cliente?.empresa ? ' - ' + ped.cliente.empresa : ''}</h4>
+                <p style="font-size: 0.875rem; color: #6b7280;">${new Date(ped.fecha).toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit', year: 'numeric'})}</p>
+              </div>
+              <div style="text-align: right;">
+                <p style="font-weight: 600; color: #D4A574; font-size: 1.25rem;">€${parseFloat(ped.total).toFixed(2)}</p>
+                <span class="badge ${ped.estado === 'completado' ? 'badge-green' : ped.estado === 'pendiente' ? 'badge-blue' : 'badge-orange'}">${ped.estado}</span>
+              </div>
+            </div>
+            
+            <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+              <p style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem;">Productos (${items.length}):</p>
+              ${items.map((item, idx) => `
+                <div style="font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
+                  • ${item.cantidad}x ${item.producto_nombre} @ €${parseFloat(item.precio_unitario).toFixed(2)}/u
+                  ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;">(-€${(item.descuento_unitario * item.cantidad).toFixed(2)})</span>` : ''}
+                </div>
               `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
+            </div>
+
+            <div style="background: #f0f9ff; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #3b82f6;">
+              <div class="flex justify-between" style="font-size: 0.875rem; margin-bottom: 0.25rem;">
+                <span>Subtotal:</span>
+                <span>€${subtotal.toFixed(2)}</span>
+              </div>
+              ${totalDescuentos > 0 ? `
+                <div class="flex justify-between" style="font-size: 0.875rem; color: #dc2626; margin-bottom: 0.25rem;">
+                  <span>Descuentos:</span>
+                  <span>-€${totalDescuentos.toFixed(2)}</span>
+                </div>
+              ` : ''}
+              <div class="flex justify-between" style="font-size: 0.875rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;">
+                <span>TOTAL:</span>
+                <span>€${parseFloat(ped.total).toFixed(2)}</span>
+              </div>
+            </div>
+
+            ${this.currentUser.rol !== 'comercial' ? `
+              <div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;">
+                <strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
 
     } catch (err) {
       console.error('Error cargando pedidos:', err);
@@ -1117,14 +1188,15 @@ class VersumCRM {
   }
 
   // ============================================
-  // MODAL PEDIDO
+  // MODAL PEDIDO MEJORADO
   // ============================================
 
   async openModalPedido() {
     const modal = document.getElementById('modalPedido');
+    this.pedidoItems = []; // Reiniciar array de items
 
-    // Cargar clientes activos
     try {
+      // Cargar clientes activos
       let query = supabaseClient
         .from('clientes')
         .select('id, nombre, empresa')
@@ -1149,11 +1221,16 @@ class VersumCRM {
 
       const selectProducto = document.getElementById('pedidoProducto');
       selectProducto.innerHTML = '<option value="">Seleccionar producto...</option>' +
-        (productos || []).map(p => `<option value="${p.id}" data-precio="${p.precio}" data-stock="${p.stock}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
+        (productos || []).map(p => `<option value="${p.id}" data-precio="${p.precio}" data-stock="${p.stock}" data-nombre="${p.nombre}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
 
+      // Resetear formulario
       document.getElementById('pedidoCantidad').value = 1;
       document.getElementById('pedidoPrecio').value = 0;
-      document.getElementById('pedidoTotal').textContent = '€0.00';
+      document.getElementById('pedidoDescuentoUnit').value = 0;
+      document.getElementById('pedidoDescuentoTotal').value = 0;
+      document.getElementById('pedidoDescuentoPct').value = 0;
+      this.renderPedidoItems();
+      this.calcularTotalPedido();
 
       modal.classList.add('active');
 
@@ -1165,20 +1242,114 @@ class VersumCRM {
 
   closeModalPedido() {
     document.getElementById('modalPedido').classList.remove('active');
+    this.pedidoItems = [];
   }
 
-  updatePedidoPrecio() {
+  updatePrecioProductoModal() {
     const select = document.getElementById('pedidoProducto');
     const selectedOption = select.options[select.selectedIndex];
     const precio = selectedOption.getAttribute('data-precio');
     document.getElementById('pedidoPrecio').value = precio || 0;
+  }
+
+  agregarProductoAlPedido() {
+    const selectProducto = document.getElementById('pedidoProducto');
+    const selectedOption = selectProducto.options[selectProducto.selectedIndex];
+    
+    const productoId = selectProducto.value;
+    const productoNombre = selectedOption.getAttribute('data-nombre');
+    const cantidad = parseInt(document.getElementById('pedidoCantidad').value);
+    const precioUnitario = parseFloat(document.getElementById('pedidoPrecio').value);
+    const descuentoUnit = parseFloat(document.getElementById('pedidoDescuentoUnit').value) || 0;
+    const stock = parseInt(selectedOption.getAttribute('data-stock'));
+
+    // Validaciones
+    if (!productoId) {
+      showNotification('❌ Selecciona un producto');
+      return;
+    }
+    if (cantidad <= 0) {
+      showNotification('❌ La cantidad debe ser mayor a 0');
+      return;
+    }
+    if (cantidad > stock) {
+      showNotification(`❌ Stock insuficiente. Disponible: ${stock}`);
+      return;
+    }
+
+    // Crear item
+    const item = {
+      id: Date.now(), // ID temporal único
+      producto_id: productoId,
+      producto_nombre: productoNombre,
+      cantidad: cantidad,
+      precio_unitario: precioUnitario,
+      descuento_unitario: descuentoUnit,
+      subtotal: (cantidad * precioUnitario) - (cantidad * descuentoUnit)
+    };
+
+    // Agregar a array
+    this.pedidoItems.push(item);
+
+    // Limpiar formulario
+    document.getElementById('pedidoProducto').value = '';
+    document.getElementById('pedidoCantidad').value = 1;
+    document.getElementById('pedidoPrecio').value = 0;
+    document.getElementById('pedidoDescuentoUnit').value = 0;
+
+    // Actualizar UI
+    this.renderPedidoItems();
     this.calcularTotalPedido();
+    showNotification(`✅ ${productoNombre} agregado al pedido`);
+  }
+
+  renderPedidoItems() {
+    const container = document.getElementById('pedidoItemsList');
+    
+    if (this.pedidoItems.length === 0) {
+      container.innerHTML = '<p class="text-gray-600 text-center">No hay productos agregados</p>';
+      return;
+    }
+
+    container.innerHTML = this.pedidoItems.map((item, idx) => `
+      <div style="background: white; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #D4A574;">
+        <div style="flex: 1;">
+          <p class="font-bold">${item.producto_nombre}</p>
+          <p style="font-size: 0.875rem; color: #6b7280;">
+            ${item.cantidad} x €${item.precio_unitario.toFixed(2)}
+            ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;"> - €${item.descuento_unitario.toFixed(2)}/u</span>` : ''}
+            = <span class="font-bold">€${item.subtotal.toFixed(2)}</span>
+          </p>
+        </div>
+        <button type="button" onclick="app.eliminarProductoDelPedido(${idx})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-weight: 600;">Eliminar</button>
+      </div>
+    `).join('');
+  }
+
+  eliminarProductoDelPedido(idx) {
+    if (confirm('¿Eliminar este producto del pedido?')) {
+      this.pedidoItems.splice(idx, 1);
+      this.renderPedidoItems();
+      this.calcularTotalPedido();
+      showNotification('✅ Producto eliminado del pedido');
+    }
   }
 
   calcularTotalPedido() {
-    const cantidad = parseFloat(document.getElementById('pedidoCantidad').value) || 0;
-    const precio = parseFloat(document.getElementById('pedidoPrecio').value) || 0;
-    const total = cantidad * precio;
+    let subtotal = 0;
+    this.pedidoItems.forEach(item => {
+      subtotal += item.subtotal;
+    });
+
+    const descuentoTotal = parseFloat(document.getElementById('pedidoDescuentoTotal').value) || 0;
+    const descuentoPct = parseFloat(document.getElementById('pedidoDescuentoPct').value) || 0;
+    const descuentoPctMonto = (subtotal * descuentoPct) / 100;
+    
+    const totalDescuentos = descuentoTotal + descuentoPctMonto;
+    const total = Math.max(0, subtotal - totalDescuentos);
+
+    document.getElementById('pedidoSubtotal').textContent = `€${subtotal.toFixed(2)}`;
+    document.getElementById('pedidoTotalDescuentos').textContent = `€${totalDescuentos.toFixed(2)}`;
     document.getElementById('pedidoTotal').textContent = `€${total.toFixed(2)}`;
   }
 
@@ -1186,56 +1357,93 @@ class VersumCRM {
     e.preventDefault();
 
     const clienteId = document.getElementById('pedidoCliente').value;
-    const productoId = document.getElementById('pedidoProducto').value;
-    const cantidad = parseInt(document.getElementById('pedidoCantidad').value);
-    const precioUnitario = parseFloat(document.getElementById('pedidoPrecio').value);
-    const total = cantidad * precioUnitario;
 
-    // Verificar stock
-    const selectProducto = document.getElementById('pedidoProducto');
-    const selectedOption = selectProducto.options[selectProducto.selectedIndex];
-    const stockDisponible = parseInt(selectedOption.getAttribute('data-stock'));
+    if (!clienteId) {
+      showNotification('❌ Selecciona un cliente');
+      return;
+    }
 
-    if (cantidad > stockDisponible) {
-      showNotification(`❌ Stock insuficiente. Disponible: ${stockDisponible}`);
+    if (this.pedidoItems.length === 0) {
+      showNotification('❌ Agrega al menos un producto al pedido');
       return;
     }
 
     try {
+      const descuentoTotal = parseFloat(document.getElementById('pedidoDescuentoTotal').value) || 0;
+      const descuentoPct = parseFloat(document.getElementById('pedidoDescuentoPct').value) || 0;
+
+      // Calcular totales
+      let subtotal = 0;
+      this.pedidoItems.forEach(item => {
+        subtotal += item.subtotal;
+      });
+      
+      const descuentoPctMonto = (subtotal * descuentoPct) / 100;
+      const totalDescuentos = descuentoTotal + descuentoPctMonto;
+      const total = Math.max(0, subtotal - totalDescuentos);
+
+      // Preparar items para guardar
+      const itemsGuardar = this.pedidoItems.map(item => ({
+        producto_id: item.producto_id,
+        producto_nombre: item.producto_nombre,
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario,
+        descuento_unitario: item.descuento_unitario,
+        subtotal: item.subtotal
+      }));
+
       // Registrar pedido
-      const { error: errorPedido } = await supabaseClient
+      const { data: pedidoData, error: errorPedido } = await supabaseClient
         .from('pedidos')
         .insert([{
           cliente_id: clienteId,
-          producto_id: productoId,
           comercial_id: this.currentUser.id,
-          cantidad: cantidad,
-          precio_unitario: precioUnitario,
+          items_json: itemsGuardar,
+          subtotal: subtotal,
+          descuento_total: descuentoTotal,
+          descuento_porcentaje: descuentoPct,
           total: total,
+          estado: 'pendiente',
           fecha: new Date().toISOString()
-        }]);
+        }])
+        .select();
 
       if (errorPedido) throw errorPedido;
 
-      // Actualizar stock
-      const { error: errorStock } = await supabaseClient
-        .from('productos')
-        .update({ stock: stockDisponible - cantidad })
-        .eq('id', productoId);
+      // Actualizar stock de cada producto
+      for (const item of this.pedidoItems) {
+        const { data: productoActual } = await supabaseClient
+          .from('productos')
+          .select('stock')
+          .eq('id', item.producto_id)
+          .single();
 
-      if (errorStock) throw errorStock;
+        if (productoActual) {
+          await supabaseClient
+            .from('productos')
+            .update({ stock: productoActual.stock - item.cantidad })
+            .eq('id', item.producto_id);
+        }
+      }
 
       // Registrar ingreso en finanzas
       await supabaseClient
         .from('finanzas')
         .insert([{
           tipo: 'ingreso',
-          concepto: `Venta de ${cantidad} unidades`,
+          concepto: `Venta: ${this.pedidoItems.map(i => `${i.cantidad}x ${i.producto_nombre}`).join(', ')}`,
           monto: total,
           categoria: 'ventas',
           comercial_id: this.currentUser.id,
           fecha: new Date().toISOString()
         }]);
+
+      // Registrar actividad
+      await this.registrarActividad('crear', 'pedidos', pedidoData[0].id, {
+        cliente_id: clienteId,
+        total: total,
+        cantidad_productos: this.pedidoItems.length
+      });
 
       showNotification('✅ Pedido registrado correctamente');
       this.closeModalPedido();
