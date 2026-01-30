@@ -1845,14 +1845,48 @@ class VersumCRM {
   async handleTareaSubmit(e) {
     e.preventDefault();
 
-    // Computar fecha desde plazo si se indicó
+    // Computar fecha y plazo:
     let fechaSeleccionada = document.getElementById('tareaFecha').value;
     const plazoVal = document.getElementById('tareaPlazoDias').value;
+
+    let plazoUsado = null; // número de días aplicado (manual o por defecto)
+    let aplicadoPorDefecto = false;
+    let manualPlazo = false;
+
+    // Si usuario indicó manualmente un plazo lo usamos
     if (plazoVal !== '' && !isNaN(parseInt(plazoVal, 10))) {
       const plazo = parseInt(plazoVal, 10);
+      manualPlazo = true;
+      plazoUsado = plazo;
       const f = new Date();
       f.setDate(f.getDate() + plazo);
       fechaSeleccionada = f.toISOString().split('T')[0];
+    } else {
+      // Si no hay plazo manual y se seleccionó un cliente, aplicar plazo por defecto según su fase
+      const clienteId = document.getElementById('tareaCliente').value || null;
+      if (clienteId) {
+        try {
+          const { data: cliente } = await supabaseClient
+            .from('clientes')
+            .select('fase')
+            .eq('id', clienteId)
+            .single();
+
+          if (cliente && cliente.fase) {
+            const plazos = await this.loadPlazosConfig();
+            const diasPorFase = plazos[cliente.fase];
+            if (diasPorFase !== undefined && diasPorFase !== null) {
+              plazoUsado = parseInt(diasPorFase, 10);
+              aplicadoPorDefecto = true;
+              const f = new Date();
+              f.setDate(f.getDate() + plazoUsado);
+              fechaSeleccionada = f.toISOString().split('T')[0];
+            }
+          }
+        } catch (err) {
+          console.warn('No se pudo obtener la fase del cliente para aplicar plazo por defecto:', err);
+        }
+      }
     }
 
     const tareaData = {
@@ -1861,7 +1895,7 @@ class VersumCRM {
       descripcion: document.getElementById('tareaDescripcion').value,
       fecha: fechaSeleccionada,
       tipo: document.getElementById('tareaTipo').value,
-      plazo_dias: (plazoVal !== '' && !isNaN(parseInt(plazoVal,10))) ? parseInt(plazoVal,10) : null,
+      plazo_dias: plazoUsado !== null ? plazoUsado : null,
       completada: false
     };
 
@@ -1872,7 +1906,13 @@ class VersumCRM {
 
       if (error) throw error;
 
-      const mensajeCreada = (plazoVal !== '' && !isNaN(parseInt(plazoVal,10))) ? `✅ Tarea creada correctamente (programada en ${plazoVal} días)` : '✅ Tarea creada correctamente';
+      let mensajeCreada = '✅ Tarea creada correctamente';
+      if (manualPlazo) {
+        mensajeCreada = `✅ Tarea creada correctamente (programada en ${parseInt(plazoVal,10)} días)`;
+      } else if (aplicadoPorDefecto && plazoUsado !== null) {
+        mensajeCreada = `✅ Tarea creada correctamente (plazo por defecto ${plazoUsado} días aplicado)`;
+      }
+
       showNotification(mensajeCreada);
       this.closeModalTarea();
       this.loadTareas('pendientes');
