@@ -689,10 +689,11 @@ class VersumCRM {
   // ============================================
 
   async crearTareaAutomatica(cliente) {
+    const plazos = await this.loadPlazosConfig();
     const diasPorFase = {
-      contacto: 2,
-      muestras: 7,
-      cliente: 30
+      contacto: plazos.contacto ?? 2,
+      muestras: plazos.muestras ?? 7,
+      cliente: plazos.cliente ?? 30
     };
 
     const descripcionesPorFase = {
@@ -718,12 +719,16 @@ class VersumCRM {
           descripcion: descripcion,
           fecha: fechaTarea.toISOString().split('T')[0],
           completada: false,
-          tipo: 'seguimiento'
+          tipo: 'seguimiento',
+          plazo_dias: dias
         }]);
     } catch (err) {
       console.error('Error creando tarea automática:', err);
+      if (err && err.message && err.message.includes('plazo_dias')) {
+        showNotification('⚠️ La columna `plazo_dias` no existe en la tabla `tareas`. Ejecute: ALTER TABLE tareas ADD COLUMN plazo_dias integer;', 8000);
+      }
     }
-  }
+  } 
 
   async registrarActividad(accion, tabla, registroId, datos) {
     try {
@@ -1540,7 +1545,10 @@ class VersumCRM {
       <div>
         <div class="flex justify-between mb-4">
           <h2 class="text-2xl font-bold">Agenda y Tareas</h2>
-          <button onclick="app.openModalTarea()" class="btn btn-gold">+ Nueva Tarea</button>
+          <div>
+            <button onclick="app.openModalPlazos()" class="btn btn-sm btn-gray" style="margin-right:0.5rem;">⚙️ Configurar plazos</button>
+            <button onclick="app.openModalTarea()" class="btn btn-gold">+ Nueva Tarea</button>
+          </div>
         </div>
 
         <!-- Resumen de tareas -->
@@ -1610,6 +1618,12 @@ class VersumCRM {
                     <option value="otro">Otro</option>
                   </select>
                 </div>
+              </div>
+
+              <div class="mb-4">
+                <label class="label">Programar en (días) - opcional</label>
+                <input type="number" id="tareaPlazoDias" class="input" min="0" placeholder="Ej: 2 (si se indica, reemplaza la fecha)" />
+                <p class="text-sm text-gray-500">Si se indica un número de días, la fecha se calculará desde hoy y sustituirá la fecha seleccionada.</p>
               </div>
             </div>
 
@@ -1726,8 +1740,8 @@ class VersumCRM {
                   ${t.completada ? '<span class="badge badge-green">✓ Completada</span>' : ''}
                   
                   <span class="badge" style="background: #f3f4f6; color: #6b7280;">${this.getTipoTareaLabel(t.tipo)}</span>
-                  
-                  ${this.currentUser.rol !== 'comercial' && t.comercial ? `<span class="badge badge-blue">👤 ${t.comercial.nombre}</span>` : ''}
+                  ${t.plazo_dias ? `<span class="badge" style="background: #fff7ed; color: #92400e;">⏱️ +${t.plazo_dias}d</span>` : ''}
+                  ${this.currentUser.rol !== 'comercial' && t.comercial ? `<span class="badge badge-blue">👤 ${t.comercial.nombre}</span>` : ''} 
                 </div>
               </div>
               
@@ -1812,6 +1826,7 @@ class VersumCRM {
       // Fecha por defecto: hoy
       const hoy = new Date().toISOString().split('T')[0];
       document.getElementById('tareaFecha').value = hoy;
+      document.getElementById('tareaPlazoDias').value = '';
       document.getElementById('tareaDescripcion').value = '';
       document.getElementById('tareaTipo').value = 'seguimiento';
 
@@ -1830,12 +1845,23 @@ class VersumCRM {
   async handleTareaSubmit(e) {
     e.preventDefault();
 
+    // Computar fecha desde plazo si se indicó
+    let fechaSeleccionada = document.getElementById('tareaFecha').value;
+    const plazoVal = document.getElementById('tareaPlazoDias').value;
+    if (plazoVal !== '' && !isNaN(parseInt(plazoVal, 10))) {
+      const plazo = parseInt(plazoVal, 10);
+      const f = new Date();
+      f.setDate(f.getDate() + plazo);
+      fechaSeleccionada = f.toISOString().split('T')[0];
+    }
+
     const tareaData = {
       cliente_id: document.getElementById('tareaCliente').value || null,
       comercial_id: this.currentUser.id,
       descripcion: document.getElementById('tareaDescripcion').value,
-      fecha: document.getElementById('tareaFecha').value,
+      fecha: fechaSeleccionada,
       tipo: document.getElementById('tareaTipo').value,
+      plazo_dias: (plazoVal !== '' && !isNaN(parseInt(plazoVal,10))) ? parseInt(plazoVal,10) : null,
       completada: false
     };
 
@@ -1846,13 +1872,79 @@ class VersumCRM {
 
       if (error) throw error;
 
-      showNotification('✅ Tarea creada correctamente');
+      const mensajeCreada = (plazoVal !== '' && !isNaN(parseInt(plazoVal,10))) ? `✅ Tarea creada correctamente (programada en ${plazoVal} días)` : '✅ Tarea creada correctamente';
+      showNotification(mensajeCreada);
       this.closeModalTarea();
       this.loadTareas('pendientes');
 
     } catch (err) {
       console.error('Error creando tarea:', err);
       showNotification('❌ Error al crear tarea');
+    }
+  }
+
+  async openModalPlazos() {
+    const modal = document.getElementById('modalPlazosTareas');
+    try {
+      const plazos = await this.loadPlazosConfig();
+      document.getElementById('plazoContacto').value = plazos.contacto;
+      document.getElementById('plazoMuestras').value = plazos.muestras;
+      document.getElementById('plazoCliente').value = plazos.cliente;
+      modal.classList.add('active');
+    } catch (err) {
+      console.error('Error abriendo modal plazos:', err);
+      showNotification('❌ Error al cargar plazos');
+    }
+  }
+
+  closeModalPlazos() {
+    document.getElementById('modalPlazosTareas').classList.remove('active');
+  }
+
+  async loadPlazosConfig() {
+    const defaults = {contacto: 2, muestras: 7, cliente: 30};
+    try {
+      const { data, error } = await supabaseClient
+        .from('tareas_config')
+        .select('contacto_dias, muestras_dias, cliente_dias')
+        .single();
+      if (error || !data) {
+        console.warn('No se pudo cargar tareas_config, usando valores por defecto.', error);
+        return defaults;
+      }
+      return {
+        contacto: data.contacto_dias ?? defaults.contacto,
+        muestras: data.muestras_dias ?? defaults.muestras,
+        cliente: data.cliente_dias ?? defaults.cliente
+      };
+    } catch (err) {
+      console.warn('Error leyendo configuración de plazos, usando por defecto.', err);
+      return defaults;
+    }
+  }
+
+  async savePlazosConfig() {
+    const contacto = parseInt(document.getElementById('plazoContacto').value, 10);
+    const muestras = parseInt(document.getElementById('plazoMuestras').value, 10);
+    const cliente = parseInt(document.getElementById('plazoCliente').value, 10);
+
+    const payload = {
+      id: 1,
+      contacto_dias: Number.isInteger(contacto) ? contacto : null,
+      muestras_dias: Number.isInteger(muestras) ? muestras : null,
+      cliente_dias: Number.isInteger(cliente) ? cliente : null
+    };
+    try {
+      const { error } = await supabaseClient
+        .from('tareas_config')
+        .upsert([payload], { onConflict: 'id' });
+      if (error) throw error;
+      showNotification('✅ Plazos guardados correctamente');
+      this.closeModalPlazos();
+    } catch (err) {
+      console.error('Error guardando plazos:', err);
+      showNotification('⚠️ No se pudo guardar en la BD. Ejecuta estas consultas en Supabase (ver consola) para crear la tabla/columna necesarias.', 8000);
+      console.info('SQL sugerido:\n\nCREATE TABLE tareas_config (id serial PRIMARY KEY, contacto_dias integer DEFAULT 2, muestras_dias integer DEFAULT 7, cliente_dias integer DEFAULT 30);\n\nALTER TABLE tareas ADD COLUMN plazo_dias integer;');
     }
   }
 
