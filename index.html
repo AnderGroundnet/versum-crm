@@ -1006,7 +1006,15 @@ class VersumCRM {
   }
 
   async loadPedidos() {
+    const container = document.getElementById('pedidosList');
+    if (container) container.innerHTML = '<p class="text-center text-gray-600">Cargando pedidos...</p>';
+
     try {
+      if (!this.currentUser) {
+        if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Sesión no iniciada</p>';
+        return;
+      }
+
       let query = supabaseClient
         .from('pedidos')
         .select(`
@@ -1024,10 +1032,8 @@ class VersumCRM {
       const { data: pedidos, error } = await query;
       if (error) throw error;
 
-      const container = document.getElementById('pedidosList');
-      
       if (!pedidos || pedidos.length === 0) {
-        container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>';
+        if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>';
         return;
       }
 
@@ -1094,6 +1100,8 @@ class VersumCRM {
 
     } catch (err) {
       console.error('Error cargando pedidos:', err);
+      if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Error cargando pedidos</p>';
+      showNotification('❌ Error cargando pedidos, revisa la consola');
     }
   }
 
