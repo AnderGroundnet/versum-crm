@@ -59,6 +59,7 @@
   <div id="notification" class="notification"></div>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
 // ============================================
 // MÓDULO 2: CONFIGURACIÓN + LOGIN
@@ -316,7 +317,10 @@ class VersumCRM {
       <div>
         <div class="flex justify-between mb-4">
           <h2 class="text-2xl font-bold">Gestión de Clientes</h2>
-          <button onclick="app.openModalCliente()" class="btn btn-gold">+ Nuevo Cliente</button>
+          <div>
+            <button onclick="app.openModalImportClientes()" class="btn btn-sm btn-gray" style="margin-right:0.5rem;">📥 Importar clientes</button>
+            <button onclick="app.openModalCliente()" class="btn btn-gold">+ Nuevo Cliente</button>
+          </div>
         </div>
         <div id="clientesList" class="grid">
           <div class="card text-center py-8">
@@ -538,6 +542,145 @@ class VersumCRM {
   closeModalCliente() {
     document.getElementById('modalCliente').classList.remove('active');
     this.editingCliente = null;
+  }
+
+  // IMPORTAR CLIENTES
+  openModalImportClientes() {
+    // Si el modal no existe en el DOM, crearlo dinámicamente
+    if (!document.getElementById('modalImportClientes')) {
+      const html = `
+        <div id="modalImportClientes" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h2 class="text-xl font-bold">Importar Clientes</h2>
+              <button onclick="app.closeModalImportClientes()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-4">
+                <label class="label">Archivo (.xlsx / .csv)</label>
+                <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" class="input" />
+              </div>
+              <div class="mb-4">
+                <label class="label"><input type="checkbox" id="importUpsertEmail" /> Usar <strong>upsert</strong> por <code>email</code> (actualizar si existe)</label>
+              </div>
+              <div class="mb-4">
+                <label class="label">Chunk size (filas por petición)</label>
+                <input type="number" id="importChunkSize" class="input" value="100" min="10" />
+              </div>
+              <div id="importPreview" style="max-height: 240px; overflow: auto; border: 1px solid #e5e7eb; padding: 0.5rem; border-radius:8px; background:#fafafa;">
+                <p class="text-gray-600">Carga un archivo para ver la vista previa.</p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" onclick="app.closeModalImportClientes()" class="btn btn-gray">Cancelar</button>
+              <button type="button" onclick="app.confirmImport()" class="btn btn-gold" id="btnConfirmImport">Importar</button>
+            </div>
+          </div>
+        </div>
+      `;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      document.body.appendChild(wrapper.firstElementChild);
+    }
+
+    document.getElementById('importPreview').innerHTML = '<p class="text-gray-600">Carga un archivo para ver la vista previa.</p>';
+    const input = document.getElementById('importFileInput');
+    if (input) { input.value = ''; input.onchange = (e) => this.handleImportFileInput(e); }
+    document.getElementById('modalImportClientes').classList.add('active');
+  }
+
+  closeModalImportClientes() {
+    const m = document.getElementById('modalImportClientes');
+    if (m) m.classList.remove('active');
+  }
+
+  async handleImportFileInput(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      let rows = [];
+      if (ext === 'csv') {
+        const text = new TextDecoder().decode(arrayBuffer);
+        document.getElementById('importPreview').innerHTML = '<pre style="white-space:pre-wrap;font-size:0.9rem;">'+text.slice(0,2000)+'</pre>';
+        this.importPreviewRows = [];
+        showNotification('CSV cargado. Nota: la vista previa es simplificada.');
+        return;
+      } else {
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      }
+
+      // Normalizar y validar
+      const preview = [];
+      const errors = [];
+      for (const r of rows) {
+        const nombre = r.nombre || r.Nombre || r.name || r.Name || '';
+        const empresa = r.empresa || r.Empresa || r.company || r.Company || '';
+        const email = r.email || r.Email || '';
+        const telefono = r.telefono || r.Telefono || r.phone || r.Phone || '';
+        const direccion = r.direccion || r.Direccion || r.address || r.Address || '';
+        const fase = r.fase || r.Fase || '';
+        const valid = nombre && (email || empresa);
+        if (!valid) errors.push({row: r, reason: 'Falta nombre o email/empresa'});
+        preview.push({ nombre, empresa, email, telefono, direccion, fase, valid });
+      }
+
+      this.importPreviewRows = preview;
+
+      const rowsHtml = preview.slice(0,100).map((p, i) => `<tr><td>${i+1}</td><td>${p.nombre}</td><td>${p.empresa}</td><td>${p.email}</td><td>${p.telefono}</td><td>${p.fase}</td><td style="color:${p.valid? '#065f46':'#ef4444'}">${p.valid? 'OK':'ERROR'}</td></tr>`).join('');
+      document.getElementById('importPreview').innerHTML = `<div style="max-height:200px;overflow:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th>#</th><th>Nombre</th><th>Empresa</th><th>Email</th><th>Tel</th><th>Fase</th><th>Estado</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><p class="text-sm text-gray-500">${preview.length} filas (mostrando ${Math.min(preview.length,100)}). ${errors.length} errores detectados.</p>`;
+
+    } catch (err) {
+      console.error('Error parseando archivo:', err);
+      showNotification('❌ Error al parsear archivo');
+      const previewEl = document.getElementById('importPreview'); if (previewEl) previewEl.innerHTML = '<p class="text-gray-600">Error cargando archivo</p>';
+    }
+  }
+
+  async confirmImport() {
+    if (!this.importPreviewRows || this.importPreviewRows.length === 0) { showNotification('❌ No hay filas para importar'); return; }
+    const upsert = document.getElementById('importUpsertEmail').checked;
+    const chunkSize = parseInt(document.getElementById('importChunkSize').value, 10) || 100;
+
+    const validRows = this.importPreviewRows.filter(r => r.valid).map(r => ({
+      nombre: r.nombre,
+      empresa: r.empresa || null,
+      email: r.email || null,
+      telefono: r.telefono || null,
+      direccion: r.direccion || null,
+      fase: (['contacto','muestras','cliente','perdido'].includes(r.fase) ? r.fase : 'contacto'),
+      fecha_creacion: new Date().toISOString(),
+      notas: ''
+    }));
+
+    if (validRows.length === 0) { showNotification('❌ No hay filas válidas para importar'); return; }
+
+    try {
+      let inserted = 0; let failed = 0;
+      for (let i = 0; i < validRows.length; i += chunkSize) {
+        const chunk = validRows.slice(i, i+chunkSize);
+        if (upsert) {
+          const { data, error } = await supabaseClient.from('clientes').upsert(chunk, { onConflict: 'email' });
+          if (error) { failed += chunk.length; console.error('Upsert error:', error); } else {
+            inserted += data.filter(d => d && d.id).length;
+          }
+        } else {
+          const { data, error } = await supabaseClient.from('clientes').insert(chunk);
+          if (error) { failed += chunk.length; console.error('Insert error:', error); } else { inserted += data.length; }
+        }
+      }
+
+      showNotification(`✅ Import finalizado: ${inserted} procesados, ${failed} fallos`);
+      const modal = document.getElementById('modalImportClientes'); if (modal) modal.classList.remove('active');
+      this.loadClientes();
+
+    } catch (err) {
+      console.error('Error importando clientes:', err);
+      showNotification('❌ Error durante import');
+    }
   }
 
   async handleClienteSubmit(e) {
