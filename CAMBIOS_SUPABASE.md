@@ -81,10 +81,57 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS password_visible BOOLEAN DEFAULT F
 
 Después de ejecutar los scripts, verifica en Supabase Console:
 
-- [ ] Tabla `pedidos` tiene columnas: `items_json`, `descuento_total`, `descuento_porcentaje`
+- [ ] Tabla `pedidos` tiene columnas: `items_json`, `descuento_total`, `descuento_porcentaje`, `estado_facturacion`
 - [ ] Tabla `pedidos` NO tiene columnas: `producto_id`, `cantidad`, `precio_unitario`
 - [ ] Tabla `comisiones_comerciales` existe con estructura correcta
 - [ ] Tabla `usuarios` tiene columnas: `comision_pct`, `password_visible`
+- [ ] Tabla `clientes` tiene columnas `ciudad`, `provincia`
+
+---
+
+## ⚠️ NUEVOS CAMBIOS REQUERIDOS (Facturación, Clientes, Estados)
+
+### 4. Agregar campos para clientes y facturación
+
+```sql
+-- Clientes: campos opcionales
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS ciudad TEXT;
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS provincia TEXT;
+
+-- Pedidos: estado de facturación y estado por defecto
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_facturacion TEXT DEFAULT 'pendiente de emitir factura';
+ALTER TABLE pedidos ALTER COLUMN estado SET DEFAULT 'pendiente de servir';
+
+-- Tabla de facturas (registro externo simplificado)
+CREATE TABLE IF NOT EXISTS facturas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pedido_id UUID REFERENCES pedidos(id),
+  numero TEXT,
+  fecha_emision TIMESTAMP,
+  fecha_envio TIMESTAMP,
+  fecha_cobro TIMESTAMP,
+  importe NUMERIC DEFAULT 0,
+  descuento NUMERIC DEFAULT 0,
+  estado TEXT DEFAULT 'emitida',
+  notas TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices para filtros frecuentes
+CREATE INDEX IF NOT EXISTS idx_clientes_filtros ON clientes (fase, ciudad, provincia, asignado_a);
+CREATE INDEX IF NOT EXISTS idx_pedidos_filtros ON pedidos (fecha, estado, estado_facturacion);
+```
+
+### 5. Rename categoría en movimientos
+
+```sql
+-- Renombrar valores existentes en la columna 'categoria' si existe
+UPDATE finanzas SET categoria = 'genero' WHERE categoria = 'materias_primas';
+```
+
+---
+
+**Importante:** Ejecuta estos scripts en el SQL Editor de Supabase. Haz una copia de seguridad si ya tienes datos en producción.
 
 ## 🔄 Migración de datos (si tienes pedidos antiguos)
 

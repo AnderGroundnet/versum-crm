@@ -1,6 +1,8 @@
-# VERSUM CRM - Instrucciones para Agentes de IA
+# VERSUM CRM — Guía rápida para agentes IA 🚀
 
-## Arquitectura General
+Resumen corto
+- Proyecto: SPA monolítica en **`index.html`** (Vanilla JS + CSS inline). NO crear archivos JS/CSS separados.
+- Ejecutar: abrir `index.html` en el navegador. Configurar Supabase en Módulo 2 (`SUPABASE_URL` / `SUPABASE_KEY`).
 
 **VERSUM CRM** es una aplicación monolítica SPA (Single Page Application) basada en HTML5 + Vanilla JavaScript, **NO usa frameworks como React/Vue**. Toda la lógica reside en `index.html` como una clase `VersumCRM` con ~2800 líneas.
 
@@ -20,7 +22,7 @@ El código está organizado en **6 módulos comentados** dentro de la clase:
    - Método: `handleLogin()`
 
 2. **Módulo 3**: Dashboard + Navegación
-   - Sistema de tabs: clientes, productos, agenda, finanzas, usuarios (admin-only)
+   - Sistema de tabs: `dashboard` (CEO/Admin), `clientes`, `productos` (renombrado a `Productos y Pedidos`), `agenda`, `finanzas`, `facturacion` (CEO/Admin), `usuarios` (admin-only)
    - Método: `navigateTo(tab)` - cambia contenido según rol
 
 3. **Módulo 4**: Gestión Completa de Clientes
@@ -36,14 +38,51 @@ El código está organizado en **6 módulos comentados** dentro de la clase:
 5. **Módulo 6**: Gestión de Productos, Pedidos (Mejorado) y Agenda
    - CRUD productos, crear/listar pedidos
    - **NUEVO**: Pedidos con múltiples productos por pedido
-   - **NUEVO**: Sistema de descuentos (por unidad y totales)
+   - **NUEVO**: Sistema de descuentos (por unidad en % y totales)
    - Sistema de tareas con filtros (pendientes, completadas, vencidas)
 
 6. **Módulo 7**: Finanzas + Gestión de Usuarios
    - Cálculo de ingresos, comisiones, deudas
    - Admin panel para crear/editar usuarios
 
-## Patrones Clave del Proyecto
+## Resumen para agentes IA
+
+Qué hacer primero
+- Ejecuta los scripts SQL en `GUIA_SUPABASE.md` y `CAMBIOS_SUPABASE.md`. Sin la migración la app no funciona.
+- Abre `index.html` en el navegador y prueba con `ceo@versum.com` / `versum2024`.
+
+Convenciones de código (rápidas)
+- Funciones: `loadXxx()`, `renderXxx()`, `handleXxx()`.
+- Modales: `openModal()` → `handleSubmit()` → `closeModal()`; IDs fijos (`modalCliente`, `modalProducto`).
+- Naming: `this.pedidoItems`, `this.comerciales`, `this.currentUser`.
+
+Operaciones críticas
+- Registrar auditoría tras cambios: `registrarActividad(accion, tabla, registroId, datos)`.
+- Crear tareas automáticas: `crearTareaAutomatica(cliente)`.
+- Notificar CEO: `notificarCEO(tipo, mensaje, datos)` (pedidos grandes, nuevo cliente, comercial inactivo).
+- Notas: `pedido.items_json` ahora usa `descuento_unitario` como porcentaje por unidad (0-100%).
+- Exports: hay botones para exportar Clientes, Pedidos y Facturación a Excel (SheetJS ya incluido).
+
+DB / contratos importantes
+- `pedidos.items_json` es JSONB: `[{producto_id, producto_nombre, cantidad, precio_unitario, descuento_unitario, subtotal}, ...]`.
+- Tablas principales: `usuarios`, `clientes`, `productos`, `pedidos`, `tareas`, `historial_actividad`, `notificaciones`, `comisiones_comerciales`.
+
+Debugging & pruebas
+- DevTools (Console + Network). Revisa `console.error()` y mensajes de `showNotification()`.
+- Para forzar sesión: `localStorage.setItem('versum_user', JSON.stringify(user))`.
+- Si algo falla: revisar la ejecución de scripts SQL en Supabase Console y permisos.
+
+Pequeños ejemplos útiles
+- Agregar nav: `<button onclick="app.navigateTo('reportes')" class="nav-btn">📊 Reportes</button>` → `renderReportesView()` + `loadReportes()`.
+- Query ejemplo para comerciales:
+  `query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);`
+
+Reglas NO negociables
+- ❌ No crear archivos JS/CSS nuevos. ❌ No omitir `try/catch` en queries. ❌ No hacer cambios en BD sin `registrarActividad()`.
+
+¿Falta algo? Dime qué ejemplos/plantillas necesitas (p. ej. plantilla para `loadReportes()` o checklist para `handlePedidoSubmit()`) y lo añado.
+
+### Control de Acceso basado en Roles
 
 ### Control de Acceso basado en Roles
 ```javascript
@@ -101,9 +140,10 @@ const { data, error } = await supabaseClient
 
 ### Tabla Supabase Requeridas
 - `usuarios`: {id, nombre, email, rol, password_hash, activo, comision_pct}
-- `clientes`: {id, nombre, empresa, email, telefono, direccion, fase, asignado_a, notas, fecha_creacion, ultima_interaccion}
+- `clientes`: {id, nombre, empresa, email, telefono, direccion, ciudad, provincia, fase, asignado_a, notas, fecha_creacion, ultima_interaccion}
 - `productos`: {id, nombre, precio, categoria, stock, margen_pct}
-- `pedidos`: {id, cliente_id, comercial_id, items_json, subtotal, descuento_total, descuento_porcentaje, total, estado, fecha}
+- `pedidos`: {id, cliente_id, comercial_id, items_json, subtotal, descuento_total, descuento_porcentaje, total, estado, estado_facturacion, fecha}
+- `facturas` (nueva): {id, pedido_id, numero, fecha_emision, fecha_envio, fecha_cobro, importe, descuento, estado, notas}
   - **items_json es un JSONB array** con estructura: `[{producto_id, producto_nombre, cantidad, precio_unitario, descuento_unitario, subtotal}, ...]`
 - `tareas`: {id, cliente_id, comercial_id, descripcion, fecha, completada, tipo}
 - `historial_actividad`: {id, usuario_id, accion, tabla, registro_id, datos_despues}
