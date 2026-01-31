@@ -36,6 +36,7 @@
     .badge-blue { background: #dbeafe; color: #1e40af; }
     .badge-green { background: #d1fae5; color: #065f46; }
     .badge-orange { background: #fed7aa; color: #9a3412; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
     .text-center { text-align: center; }
     .text-lg { font-size: 1.125rem; }
     .text-xl { font-size: 1.25rem; }
@@ -60,6 +61,7 @@
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
 // ============================================
 // MÓDULO 2: CONFIGURACIÓN + LOGIN
@@ -242,14 +244,14 @@ class VersumCRM {
         <div class="nav">
           <div class="container" style="padding: 0;">
             <button onclick="app.navigateTo('clientes')" class="nav-btn active" id="nav-clientes">👥 Clientes</button>
-            <button onclick="app.navigateTo('productos')" class="nav-btn" id="nav-productos">📦 Productos</button>
+            <button onclick="app.navigateTo('productos')" class="nav-btn" id="nav-productos">📦 Productos y Pedidos</button>
             <button onclick="app.navigateTo('agenda')" class="nav-btn" id="nav-agenda">📅 Agenda</button>
             <button onclick="app.navigateTo('finanzas')" class="nav-btn" id="nav-finanzas">💰 Finanzas</button>
             ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') 
-              ? '<button onclick="app.navigateTo(\'usuarios\')" class="nav-btn" id="nav-usuarios">⚙️ Usuarios</button>' 
+              ? '<button onclick="app.navigateTo(\'dashboard\')" class="nav-btn" id="nav-dashboard">📊 Dashboard</button><button onclick="app.navigateTo(\'facturacion\')" class="nav-btn" id="nav-facturacion">🧾 Facturación</button><button onclick="app.navigateTo(\'usuarios\')" class="nav-btn" id="nav-usuarios">⚙️ Usuarios</button>' 
               : ''}
           </div>
-        </div>
+        </div> 
 
         <!-- Contenido principal -->
         <div class="container">
@@ -278,6 +280,14 @@ class VersumCRM {
     const content = document.getElementById('mainContent');
     
     switch(tab) {
+      case 'dashboard':
+        if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
+          content.innerHTML = this.renderDashboardView();
+          this.loadDashboard();
+        } else {
+          content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>';
+        }
+        break;
       case 'clientes':
         content.innerHTML = this.renderClientesView();
         this.loadClientes();
@@ -290,6 +300,14 @@ class VersumCRM {
   content.innerHTML = this.renderAgendaView();
   this.loadTareas('pendientes');
   break;
+      case 'facturacion':
+        if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
+          content.innerHTML = this.renderFacturacionView();
+          this.loadFacturacion();
+        } else {
+          content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>';
+        }
+        break;
       case 'finanzas':
   content.innerHTML = this.renderFinanzasView();
   this.loadFinanzas('todas');
@@ -317,7 +335,23 @@ class VersumCRM {
       <div>
         <div class="flex justify-between mb-4">
           <h2 class="text-2xl font-bold">Gestión de Clientes</h2>
-          <div>
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <input id="clientesSearch" oninput="app.loadClientes()" class="input" placeholder="Buscar cliente por nombre..." style="width:220px; margin-right:0.5rem;" />
+            <select id="clientesSort" onchange="app.loadClientes()" class="select" style="width:160px; margin-right:0.5rem;">
+              <option value="nombre_asc">Nombre ↑</option>
+              <option value="nombre_desc">Nombre ↓</option>
+              <option value="fecha_desc">Fecha ↓</option>
+              <option value="fecha_asc">Fecha ↑</option>
+              <option value="comercial">Comercial</option>
+            </select>
+            <select id="clientesFase" onchange="app.loadClientes()" class="select" style="width:160px; margin-right:0.5rem;">
+              <option value="">Todas las fases</option>
+              <option value="contacto">Contacto</option>
+              <option value="muestras">Muestras</option>
+              <option value="cliente">Cliente</option>
+              <option value="perdido">Perdido</option>
+            </select>
+            <button onclick="app.exportClientesToExcel()" class="btn btn-sm btn-gold" style="margin-right:0.5rem;">Exportar Excel</button>
             <button onclick="app.openModalImportClientes()" class="btn btn-sm btn-gray" style="margin-right:0.5rem;">📥 Importar clientes</button>
             <button onclick="app.openModalCliente()" class="btn btn-gold">+ Nuevo Cliente</button>
           </div>
@@ -406,9 +440,25 @@ class VersumCRM {
         .select('*, asignado:usuarios!clientes_asignado_a_fkey(id, nombre, email)')
         .order('fecha_creacion', { ascending: false });
 
+      // Aplicar filtros básicos
+      const sort = document.getElementById('clientesSort')?.value || 'fecha_desc';
+      const faseFiltro = document.getElementById('clientesFase')?.value || '';
+      const search = document.getElementById('clientesSearch')?.value?.toLowerCase() || '';
+
+      if (faseFiltro) query = query.eq('fase', faseFiltro);
+
       // Si es comercial, solo ver sus clientes y los sin asignar
       if (this.currentUser.rol === 'comercial') {
         query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
+      }
+
+      // Orden según selección
+      switch (sort) {
+        case 'nombre_asc': query = query.order('nombre', { ascending: true }); break;
+        case 'nombre_desc': query = query.order('nombre', { ascending: false }); break;
+        case 'fecha_asc': query = query.order('fecha_creacion', { ascending: true }); break;
+        case 'fecha_desc': query = query.order('fecha_creacion', { ascending: false }); break;
+        case 'comercial': query = query.order('asignado.nombre', { ascending: false }); break;
       }
 
       const { data: clientes, error } = await query;
@@ -426,7 +476,10 @@ class VersumCRM {
         return;
       }
 
-      container.innerHTML = clientes.map(c => `
+      // Filtro por búsqueda (local)
+      const clientesFiltrados = search ? (clientes.filter(c => (c.nombre || '').toLowerCase().includes(search))) : clientes;
+
+      container.innerHTML = clientesFiltrados.map(c => `
         <div class="card">
           <div class="flex justify-between">
             <div style="flex: 1;">
@@ -926,7 +979,7 @@ class VersumCRM {
     return `
       <div>
         <div class="flex justify-between mb-4">
-          <h2 class="text-2xl font-bold">Gestión de Productos</h2>
+          <h2 class="text-2xl font-bold">Productos y Pedidos</h2>
           <div class="flex gap-2">
             <button onclick="app.openModalPedido()" class="btn btn-blue">+ Nuevo Pedido</button>
             <button onclick="app.openModalProducto()" class="btn btn-gold">+ Nuevo Producto</button>
@@ -945,7 +998,10 @@ class VersumCRM {
         <div class="card">
           <div class="flex justify-between mb-4">
             <h3 class="text-xl font-bold">Historial de Pedidos</h3>
-            <button id="togglePedidosProductosBtn" class="btn btn-gray" onclick="app.toggleProductosVisibility()">${this.pedidosProductosHidden ? 'Mostrar productos' : 'Ocultar productos'}</button>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <button onclick="app.exportPedidosToExcel()" class="btn btn-sm btn-gold">Exportar Excel</button>
+              <button id="togglePedidosProductosBtn" class="btn btn-gray" onclick="app.toggleProductosVisibility()">${this.pedidosProductosHidden ? 'Mostrar productos' : 'Ocultar productos'}</button>
+            </div>
           </div>
           <div id="pedidosList">
             <p class="text-center text-gray-600">Cargando pedidos...</p>
@@ -1012,6 +1068,10 @@ class VersumCRM {
                 <select id="pedidoCliente" class="select" required>
                   <option value="">Seleccionar cliente...</option>
                 </select>
+                <div id="nuevoClienteDiv" style="display:none; margin-top:0.5rem;">
+                  <label class="label">Nombre Cliente Nuevo *</label>
+                  <input type="text" id="nuevoClienteNombre" class="input" placeholder="Nombre del cliente" />
+                </div>
               </div>
 
               <!-- Sección de Productos -->
@@ -1020,25 +1080,25 @@ class VersumCRM {
                 
                 <div class="grid grid-2 gap-2 mb-3">
                   <div>
-                    <label class="label">Producto *</label>
-                    <select id="pedidoProducto" class="select" required onchange="app.updatePrecioProductoModal()">
+                    <label class="label">Producto</label>
+                    <select id="pedidoProducto" class="select" onchange="app.updatePrecioProductoModal()">
                       <option value="">Seleccionar producto...</option>
                     </select>
                   </div>
                   <div>
-                    <label class="label">Cantidad *</label>
-                    <input type="number" id="pedidoCantidad" class="input" required min="1" value="1" />
+                    <label class="label">Cantidad</label>
+                    <input type="number" id="pedidoCantidad" class="input" min="1" value="1" />
                   </div>
                 </div>
 
                 <div class="grid grid-2 gap-2 mb-3">
                   <div>
                     <label class="label">Precio Unitario (€)</label>
-                    <input type="number" id="pedidoPrecio" class="input" required min="0" step="0.01" />
+                    <input type="number" id="pedidoPrecio" class="input" min="0" step="0.01" />
                   </div>
                   <div>
-                    <label class="label">Descuento por unidad (€)</label>
-                    <input type="number" id="pedidoDescuentoUnit" class="input" min="0" step="0.01" value="0" />
+                    <label class="label">Descuento por unidad (%)</label>
+                    <input type="number" id="pedidoDescuentoUnit" class="input" min="0" max="100" step="0.01" value="0" />
                   </div>
                 </div>
 
@@ -1201,11 +1261,24 @@ class VersumCRM {
               </div>
               <div style="text-align: right;">
                 <p style="font-weight: 600; color: #D4A574; font-size: 1.25rem;">€${parseFloat(ped.total).toFixed(2)}</p>
-                <span class="badge ${ped.estado === 'completado' ? 'badge-green' : ped.estado === 'pendiente' ? 'badge-blue' : 'badge-orange'}">${ped.estado}</span>
+                <span class="badge ${ped.estado === 'servido' ? 'badge-green' : ped.estado === 'parcialmente servido' ? 'badge-orange' : 'badge-red'}">${ped.estado}</span>
               </div>
             </div>
             
             <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+              ${ (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
+                <div style="margin-bottom:0.5rem;">
+                  <label class="label" style="font-size:0.85rem; margin-bottom:0.25rem; display:block;">Estado de facturación</label>
+                  <select onchange="app.updatePedidoFacturacion('${ped.id}', this.value)" style="padding:0.4rem; border-radius:6px;"> 
+                    <option value="pendiente de emitir factura" ${ped.estado_facturacion === 'pendiente de emitir factura' ? 'selected' : ''}>Pendiente de emitir factura</option>
+                    <option value="factura emitida" ${ped.estado_facturacion === 'factura emitida' ? 'selected' : ''}>Factura emitida</option>
+                    <option value="factura enviada" ${ped.estado_facturacion === 'factura enviada' ? 'selected' : ''}>Factura enviada</option>
+                    <option value="factura cobrada" ${ped.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Factura cobrada</option>
+                  </select>
+                </div>
+              ` : `
+                <div style="margin-top:0.5rem;"><strong>Factura:</strong> ${ped.estado_facturacion || 'N/A'}</div>
+              ` }
               <div class="flex justify-between" style="align-items:center; margin-bottom:0.5rem;">
                 <p style="font-size: 0.875rem; font-weight: 600; margin: 0;">Productos (${items.length}):</p>
                 <button id="pedido-toggle-${ped.id}" class="btn btn-gray" style="font-size:0.8rem; padding:0.2rem 0.5rem;" onclick="app.togglePedidoItems('${ped.id}')">${(this.collapsedPedidos[ped.id] || this.pedidosProductosHidden) ? 'Mostrar productos' : 'Ocultar productos'}</button>
@@ -1214,7 +1287,7 @@ class VersumCRM {
                 ${items.map((item, idx) => `
                   <div style="font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
                     • ${item.cantidad}x ${item.producto_nombre} @ €${parseFloat(item.precio_unitario).toFixed(2)}/u
-                    ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;">(-€${(item.descuento_unitario * item.cantidad).toFixed(2)})</span>` : ''}
+                    ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;">(- ${item.descuento_unitario}% )</span>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -1237,19 +1310,179 @@ class VersumCRM {
               </div>
             </div>
 
-            ${this.currentUser.rol !== 'comercial' ? `
-              <div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;">
-                <strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}
-              </div>
-            ` : ''}
+            ${(() => {
+                const canEdit = (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin' || ped.comercial_id === this.currentUser.id);
+                return canEdit ? `
+                  <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center;">
+                    <div style="font-size:0.875rem; color:#6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>
+                    <button onclick="app.openModalEditPedido('${ped.id}')" class="btn btn-sm btn-gray">Editar</button>
+                  </div>
+                ` : `
+                  <div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>
+                `;
+              })()}
           </div>
         `;
       }).join('');
 
     } catch (err) {
-      console.error('Error cargando pedidos:', err);
-      if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Error cargando pedidos</p>';
-      showNotification('❌ Error cargando pedidos, revisa la consola');
+      console.error('Error cargando pedidos (primario):', err);
+      // Fallback: intentar cargar sin joins y mapear clientes/comerciales por separado
+      try {
+        const { data: pedidosSimple, error: errSimple } = await supabaseClient
+          .from('pedidos')
+          .select('*')
+          .order('fecha', { ascending: false })
+          .limit(50);
+        if (errSimple) throw errSimple;
+
+        if (!pedidosSimple || pedidosSimple.length === 0) {
+          if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>';
+          return;
+        }
+
+        const clienteIds = [...new Set(pedidosSimple.map(p => p.cliente_id).filter(Boolean))];
+        const comercialIds = [...new Set(pedidosSimple.map(p => p.comercial_id).filter(Boolean))];
+
+        const { data: clientesMap } = await supabaseClient.from('clientes').select('id, nombre, empresa').in('id', clienteIds);
+        const { data: comercialesMap } = await supabaseClient.from('usuarios').select('id, nombre').in('id', comercialIds);
+
+        const clientesById = (clientesMap || []).reduce((acc, c) => (acc[c.id] = c, acc), {});
+        const comercialesById = (comercialesMap || []).reduce((acc, c) => (acc[c.id] = c, acc), {});
+
+        container.innerHTML = pedidosSimple.map(ped => {
+          const items = ped.items_json || [];
+          const descuentoTotal = ped.descuento_total || 0;
+          const descuentoPct = ped.descuento_porcentaje || 0;
+          const subtotal = ped.subtotal || 0;
+          const totalDescuentos = descuentoTotal + ((subtotal * descuentoPct) / 100);
+
+          return `
+            <div class="card" style="margin-bottom: 1rem;">
+              <div class="flex justify-between mb-3">
+                <div>
+                  <h4 class="font-bold">${clientesById[ped.cliente_id]?.nombre || 'Cliente N/A'}${clientesById[ped.cliente_id]?.empresa ? ' - ' + clientesById[ped.cliente_id].empresa : ''}</h4>
+                  <p style="font-size: 0.875rem; color: #6b7280;">${new Date(ped.fecha).toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit', year: 'numeric'})}</p>
+                </div>
+                <div style="text-align: right;">
+                  <p style="font-weight: 600; color: #D4A574; font-size: 1.25rem;">€${parseFloat(ped.total).toFixed(2)}</p>
+                  <span class="badge ${ped.estado === 'servido' ? 'badge-green' : ped.estado === 'parcialmente servido' ? 'badge-orange' : 'badge-red'}">${ped.estado}</span>
+                </div>
+              </div>
+
+              <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+                <div class="flex justify-between" style="align-items:center; margin-bottom:0.5rem;">
+                  <p style="font-size: 0.875rem; font-weight: 600; margin: 0;">Productos (${items.length}):</p>
+                </div>
+                <div id="pedido-items-${ped.id}" class="pedido-items" style="display: block;">
+                  ${items.map((item, idx) => `
+                    <div style="font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">• ${item.cantidad}x ${item.producto_nombre} @ €${parseFloat(item.precio_unitario).toFixed(2)}/u ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;"> - ${item.descuento_unitario}%</span>` : ''}</div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div style="background: #f0f9ff; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                <div class="flex justify-between" style="font-size: 0.875rem; margin-bottom: 0.25rem;"><span>Subtotal:</span><span>€${subtotal.toFixed(2)}</span></div>
+                ${totalDescuentos > 0 ? `<div class="flex justify-between" style="font-size: 0.875rem; color: #dc2626; margin-bottom: 0.25rem;"><span>Descuentos:</span><span>-€${totalDescuentos.toFixed(2)}</span></div>` : ''}
+                <div class="flex justify-between" style="font-size: 0.875rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;"><span>TOTAL:</span><span>€${parseFloat(ped.total).toFixed(2)}</span></div>
+              </div>
+
+              ${this.currentUser.rol !== 'comercial' ? `<div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;"><strong>Comercial:</strong> ${comercialesById[ped.comercial_id]?.nombre || 'N/A'}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+
+        return;
+
+      } catch (err2) {
+        console.error('Fallback also failed loading pedidos:', err2);
+        if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Error cargando pedidos</p>';
+        showNotification('❌ Error cargando pedidos, revisa la consola');
+      }
+    }
+  }
+
+  // Actualizar estado de facturación de un pedido. Si se marca como 'factura cobrada' se registra un ingreso (si no existe ya).
+  async updatePedidoFacturacion(pedidoId, nuevoEstado) {
+    try {
+      const { error: errUpdate } = await supabaseClient
+        .from('pedidos')
+        .update({ estado_facturacion: nuevoEstado })
+        .eq('id', pedidoId);
+      if (errUpdate) throw errUpdate;
+
+      if (nuevoEstado === 'factura cobrada') {
+        // Evitar duplicados: buscar movimiento con concepto específico
+        const concept = `Cobro factura pedido ${pedidoId}`;
+        const { data: exists } = await supabaseClient
+          .from('finanzas')
+          .select('id')
+          .eq('concepto', concept)
+          .limit(1);
+        if (!exists || exists.length === 0) {
+          const { data: pedido } = await supabaseClient
+            .from('pedidos')
+            .select('total, comercial_id')
+            .eq('id', pedidoId)
+            .single();
+          if (pedido) {
+            await supabaseClient
+              .from('finanzas')
+              .insert([{
+                tipo: 'ingreso',
+                concepto: concept,
+                monto: pedido.total,
+                categoria: 'ventas',
+                comercial_id: pedido.comercial_id,
+                fecha: new Date().toISOString()
+              }]);
+          }
+        }
+      }
+
+      showNotification('✅ Estado de facturación actualizado');
+      if (typeof this.loadFacturacion === 'function') this.loadFacturacion();
+      this.loadFinanzas('todas');
+      this.registrarActividad('actualizar', 'pedidos', pedidoId, { estado_facturacion: nuevoEstado });
+
+    } catch (err) {
+      console.error('Error actualizando estado de facturación:', err);
+      showNotification('❌ Error al actualizar estado de facturación');
+    }
+  }
+
+  async openModalEditPedido(pedidoId) {
+    try {
+      const { data: pedido } = await supabaseClient
+        .from('pedidos')
+        .select('*, cliente:clientes(id,nombre), items_json')
+        .eq('id', pedidoId)
+        .single();
+
+      if (!pedido) {
+        showNotification('❌ Pedido no encontrado');
+        return;
+      }
+
+      this.editingPedidoId = pedidoId;
+      this.pedidoItems = pedido.items_json || [];
+
+      // Abrir modal y rellenar campos
+      document.getElementById('pedidoCliente').value = pedido.cliente?.id || '';
+      document.getElementById('nuevoClienteDiv').style.display = 'none';
+      // Ajustar título y botón
+      document.getElementById('modalPedido').querySelector('.modal-header h2').textContent = 'Editar Pedido';
+      const footerBtn = document.querySelector('#modalPedido .modal-footer button[type="submit"]');
+      if (footerBtn) footerBtn.textContent = 'Actualizar Pedido';
+      // Render items
+      this.renderPedidoItems();
+      this.calcularTotalPedido();
+
+      document.getElementById('modalPedido').classList.add('active');
+
+    } catch (err) {
+      console.error('Error abriendo modal de edición de pedido:', err);
+      showNotification('❌ Error al abrir edición de pedido');
     }
   }
 
@@ -1417,22 +1650,31 @@ class VersumCRM {
     this.pedidoItems = []; // Reiniciar array de items
 
     try {
-      // Cargar clientes activos
+      // Cargar clientes (todos para CEO/Admin, solo asignados para comercial). Incluye opción 'cliente nuevo'
       let query = supabaseClient
         .from('clientes')
         .select('id, nombre, empresa')
-        .eq('fase', 'cliente')
         .order('nombre', { ascending: true });
 
       if (this.currentUser.rol === 'comercial') {
-        query = query.eq('asignado_a', this.currentUser.id);
+        query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
       }
 
       const { data: clientes } = await query;
 
       const selectCliente = document.getElementById('pedidoCliente');
-      selectCliente.innerHTML = '<option value="">Seleccionar cliente...</option>' +
+      selectCliente.innerHTML = '<option value="">Seleccionar cliente...</option><option value="__new">+ Cliente nuevo</option>' +
         (clientes || []).map(c => `<option value="${c.id}">${c.nombre}${c.empresa ? ' - ' + c.empresa : ''}</option>`).join('');
+
+      // Mostrar input para nombre si se elige cliente nuevo
+      selectCliente.onchange = () => {
+        const nuevoDiv = document.getElementById('nuevoClienteDiv');
+        if (selectCliente.value === '__new') {
+          nuevoDiv.style.display = 'block';
+        } else {
+          nuevoDiv.style.display = 'none';
+        }
+      };
 
       // Cargar productos
       const { data: productos } = await supabaseClient
@@ -1464,6 +1706,11 @@ class VersumCRM {
   closeModalPedido() {
     document.getElementById('modalPedido').classList.remove('active');
     this.pedidoItems = [];
+    this.editingPedidoId = null;
+    const footerBtn = document.querySelector('#modalPedido .modal-footer button[type="submit"]');
+    if (footerBtn) footerBtn.textContent = 'Registrar Pedido Completo';
+    try { document.getElementById('modalPedido').querySelector('.modal-header h2').textContent = 'Nuevo Pedido (Múltiples Productos)'; } catch(e){}
+    const nuevoDiv = document.getElementById('nuevoClienteDiv'); if (nuevoDiv) nuevoDiv.style.display = 'none';
   }
 
   updatePrecioProductoModal() {
@@ -1481,7 +1728,7 @@ class VersumCRM {
     const productoNombre = selectedOption.getAttribute('data-nombre');
     const cantidad = parseInt(document.getElementById('pedidoCantidad').value);
     const precioUnitario = parseFloat(document.getElementById('pedidoPrecio').value);
-    const descuentoUnit = parseFloat(document.getElementById('pedidoDescuentoUnit').value) || 0;
+    const descuentoUnitPct = parseFloat(document.getElementById('pedidoDescuentoUnit').value) || 0;
     const stock = parseInt(selectedOption.getAttribute('data-stock'));
 
     // Validaciones
@@ -1498,15 +1745,18 @@ class VersumCRM {
       return;
     }
 
-    // Crear item
+    // Crear item (descuento por unidad en porcentaje)
+    const descuentoFactor = Math.max(0, Math.min(100, descuentoUnitPct)) / 100;
+    const subtotalCalc = (cantidad * precioUnitario) * (1 - descuentoFactor);
+
     const item = {
       id: Date.now(), // ID temporal único
       producto_id: productoId,
       producto_nombre: productoNombre,
       cantidad: cantidad,
       precio_unitario: precioUnitario,
-      descuento_unitario: descuentoUnit,
-      subtotal: (cantidad * precioUnitario) - (cantidad * descuentoUnit)
+      descuento_unitario: descuentoUnitPct, // porcentaje
+      subtotal: parseFloat(subtotalCalc.toFixed(2))
     };
 
     // Agregar a array
@@ -1613,18 +1863,67 @@ class VersumCRM {
         subtotal: item.subtotal
       }));
 
-      // Registrar pedido
+      // Si se seleccionó 'cliente nuevo', crear cliente mínimo
+      let clienteFinalId = clienteId;
+      if (clienteId === '__new') {
+        const nuevoNombre = document.getElementById('nuevoClienteNombre').value?.trim();
+        if (!nuevoNombre) {
+          showNotification('❌ Escribe el nombre del cliente nuevo');
+          return;
+        }
+        const { data: newCliente, error: errCli } = await supabaseClient
+          .from('clientes')
+          .insert([{
+            nombre: nuevoNombre,
+            asignado_a: this.currentUser.id
+          }])
+          .select()
+          .single();
+        if (errCli) throw errCli;
+        clienteFinalId = newCliente.id;
+      }
+
+      // Si estamos editando un pedido existente, actualizar
+      if (this.editingPedidoId) {
+        const { error: errUpdate } = await supabaseClient
+          .from('pedidos')
+          .update({
+            cliente_id: clienteFinalId,
+            items_json: itemsGuardar,
+            subtotal: subtotal,
+            descuento_total: descuentoTotal,
+            descuento_porcentaje: descuentoPct,
+            total: total,
+            fecha: new Date().toISOString()
+          })
+          .eq('id', this.editingPedidoId);
+        if (errUpdate) throw errUpdate;
+
+        await this.registrarActividad('actualizar', 'pedidos', this.editingPedidoId, {
+          total: total,
+          cantidad_productos: this.pedidoItems.length
+        });
+
+        showNotification('✅ Pedido actualizado correctamente');
+        this.closeModalPedido();
+        this.editingPedidoId = null;
+        this.loadProductos();
+        return;
+      }
+
+      // Registrar pedido (estado inicial: pendiente de servir; estado_facturacion por defecto)
       const { data: pedidoData, error: errorPedido } = await supabaseClient
         .from('pedidos')
         .insert([{
-          cliente_id: clienteId,
+          cliente_id: clienteFinalId,
           comercial_id: this.currentUser.id,
           items_json: itemsGuardar,
           subtotal: subtotal,
           descuento_total: descuentoTotal,
           descuento_porcentaje: descuentoPct,
           total: total,
-          estado: 'pendiente',
+          estado: 'pendiente de servir',
+          estado_facturacion: 'pendiente de emitir factura',
           fecha: new Date().toISOString()
         }])
         .select();
@@ -1647,23 +1946,12 @@ class VersumCRM {
         }
       }
 
-      // Registrar ingreso en finanzas
-      await supabaseClient
-        .from('finanzas')
-        .insert([{
-          tipo: 'ingreso',
-          concepto: `Venta: ${this.pedidoItems.map(i => `${i.cantidad}x ${i.producto_nombre}`).join(', ')}`,
-          monto: total,
-          categoria: 'ventas',
-          comercial_id: this.currentUser.id,
-          fecha: new Date().toISOString()
-        }]);
-
       // Registrar actividad
       await this.registrarActividad('crear', 'pedidos', pedidoData[0].id, {
-        cliente_id: clienteId,
+        cliente_id: clienteFinalId,
         total: total,
-        cantidad_productos: this.pedidoItems.length
+        cantidad_productos: this.pedidoItems.length,
+        estado: 'pendiente de servir'
       });
 
       showNotification('✅ Pedido registrado correctamente');
@@ -2276,7 +2564,7 @@ class VersumCRM {
                 <select id="finanzaCategoria" class="select">
                   <option value="">Seleccionar...</option>
                   <option value="ventas">Ventas</option>
-                  <option value="materias_primas">Materias Primas</option>
+                  <option value="genero">Género</option>
                   <option value="marketing">Marketing</option>
                   <option value="transporte">Transporte</option>
                   <option value="alquiler">Alquiler</option>
@@ -2400,34 +2688,41 @@ class VersumCRM {
 
   async loadComisiones() {
     try {
-      // Obtener comerciales con comisión configurada
-      const { data: comerciales } = await supabaseClient
-        .from('usuarios')
-        .select('id, nombre, comision_porcentaje')
-        .eq('rol', 'comercial')
-        .eq('activo', true)
-        .gt('comision_porcentaje', 0);
+      // Obtener comisiones activas por comercial
+      const { data: comConf } = await supabaseClient
+        .from('comisiones_comerciales')
+        .select('*')
+        .eq('activo', true);
 
-      if (!comerciales || comerciales.length === 0) {
+      if (!comConf || comConf.length === 0) {
         document.getElementById('comisionesList').innerHTML = `
-          <p class="text-center text-gray-600">No hay comerciales con comisiones configuradas</p>
+          <p class="text-center text-gray-600">No hay comisiones configuradas</p>
         `;
         return;
       }
 
-      // Calcular ventas y comisiones de cada comercial
-      const comisiones = await Promise.all(comerciales.map(async (c) => {
+      const comisiones = await Promise.all(comConf.map(async (c) => {
+        // Obtener comercial
+        const { data: user } = await supabaseClient
+          .from('usuarios')
+          .select('id, nombre')
+          .eq('id', c.comercial_id)
+          .single();
+
+        // Sumar ventas solo de pedidos cobrados
         const { data: pedidos } = await supabaseClient
           .from('pedidos')
           .select('total')
-          .eq('comercial_id', c.id);
+          .eq('comercial_id', c.comercial_id)
+          .eq('estado_facturacion', 'factura cobrada');
 
         const totalVentas = pedidos ? pedidos.reduce((sum, p) => sum + parseFloat(p.total || 0), 0) : 0;
-        const comision = totalVentas * (c.comision_porcentaje / 100);
+        const porcentaje = c.porcentaje || 0;
+        const comision = totalVentas * (porcentaje / 100);
 
         return {
-          nombre: c.nombre,
-          porcentaje: c.comision_porcentaje,
+          nombre: user?.nombre || 'N/A',
+          porcentaje: porcentaje,
           ventas: totalVentas,
           comision: comision
         };
@@ -2468,6 +2763,336 @@ class VersumCRM {
     }
   }
 
+  // ============================================
+  // DASHBOARD (CEO / ADMIN)
+  // ============================================
+  renderDashboardView() {
+    return `
+      <div>
+        <div class="flex justify-between mb-4">
+          <h2 class="text-2xl font-bold">Dashboard</h2>
+        </div>
+
+        <div class="grid grid-2 mb-4">
+          <div class="card">
+            <p style="opacity:0.8;">Ventas (últimos 6 meses)</p>
+            <p class="text-2xl font-bold mt-2" id="kpiVentasTotales">€0</p>
+          </div>
+          <div class="card">
+            <p style="opacity:0.8;">Pedidos Totales</p>
+            <p class="text-2xl font-bold mt-2" id="kpiPedidosTotales">0</p>
+          </div>
+          <div class="card">
+            <p style="opacity:0.8;">Pedidos Cobrados</p>
+            <p class="text-2xl font-bold mt-2" id="kpiPedidosCobrados">0</p>
+          </div>
+          <div class="card">
+            <p style="opacity:0.8;">Ticket Medio</p>
+            <p class="text-2xl font-bold mt-2" id="kpiAvgTicket">€0</p>
+          </div>
+        </div>
+
+        <div class="grid grid-2 mb-4">
+          <div class="card">
+            <h3 class="font-bold mb-2">Ventas últimos 6 meses</h3>
+            <canvas id="chartVentas" height="150"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="font-bold mb-2">Pedidos últimos 6 meses</h3>
+            <canvas id="chartPedidos" height="150"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="font-bold mb-2">Top comerciales (ventas cobradas)</h3>
+          <div id="kpiTopComercialesList">Cargando...</div>
+        </div>
+      </div>
+    `;
+  }
+
+  async loadDashboard() {
+    try {
+      // últimos 6 meses
+      const hoy = new Date();
+      const start = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1);
+      const startISO = start.toISOString();
+
+      const { data: pedidos } = await supabaseClient
+        .from('pedidos')
+        .select('fecha,total,estado_facturacion,comercial_id')
+        .gte('fecha', startISO);
+
+      const months = [];
+      const monthLabels = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        months.push({ key, total: 0, count: 0, label: d.toLocaleString('es-ES', { month: 'short', year: 'numeric' }) });
+        monthLabels.push(d.toLocaleString('es-ES', { month: 'short' }));
+      }
+
+      let ventasTotales = 0;
+      let pedidosTotales = 0;
+      let pedidosCobrados = 0;
+
+      (pedidos || []).forEach(p => {
+        const d = new Date(p.fecha);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const m = months.find(m => m.key === key);
+        if (m) {
+          m.total += parseFloat(p.total || 0);
+          m.count += 1;
+        }
+        ventasTotales += parseFloat(p.total || 0);
+        pedidosTotales += 1;
+        if (p.estado_facturacion === 'factura cobrada') pedidosCobrados += 1;
+      });
+
+      document.getElementById('kpiVentasTotales').textContent = `€${ventasTotales.toFixed(2)}`;
+      document.getElementById('kpiPedidosTotales').textContent = `${pedidosTotales}`;
+      document.getElementById('kpiPedidosCobrados').textContent = `${pedidosCobrados}`;
+      document.getElementById('kpiAvgTicket').textContent = `€${(pedidosTotales ? (ventasTotales / pedidosTotales) : 0).toFixed(2)}`;
+
+      // Chart: Ventas
+      const ctxV = document.getElementById('chartVentas').getContext('2d');
+      const ventasData = months.map(m => m.total.toFixed(2));
+      if (this.chartVentas) this.chartVentas.destroy();
+      this.chartVentas = new Chart(ctxV, {
+        type: 'line',
+        data: {
+          labels: months.map(m => m.label),
+          datasets: [{ label: 'Ventas', data: ventasData, borderColor: '#D4A574', backgroundColor: 'rgba(212,165,116,0.1)', tension: 0.3 }]
+        }
+      });
+
+      // Chart: Pedidos
+      const ctxP = document.getElementById('chartPedidos').getContext('2d');
+      const pedidosData = months.map(m => m.count);
+      if (this.chartPedidos) this.chartPedidos.destroy();
+      this.chartPedidos = new Chart(ctxP, {
+        type: 'line',
+        data: {
+          labels: months.map(m => m.label),
+          datasets: [{ label: 'Pedidos', data: pedidosData, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.3 }]
+        }
+      });
+
+      // Top comerciales (ventas cobradas en periodo)
+      const { data: comerciales } = await supabaseClient
+        .from('usuarios')
+        .select('id, nombre')
+        .eq('rol', 'comercial')
+        .eq('activo', true);
+
+      const ventasPorComercial = await Promise.all((comerciales || []).map(async (u) => {
+        const { data: ventas } = await supabaseClient
+          .from('pedidos')
+          .select('total')
+          .eq('comercial_id', u.id)
+          .eq('estado_facturacion', 'factura cobrada')
+          .gte('fecha', startISO);
+        const total = ventas ? ventas.reduce((s, v) => s + parseFloat(v.total || 0), 0) : 0;
+        return { nombre: u.nombre, total };
+      }));
+
+      const top = (ventasPorComercial || []).sort((a,b) => b.total - a.total).slice(0,5);
+      document.getElementById('kpiTopComercialesList').innerHTML = top.map(t => `<div style="display:flex; justify-content:space-between; padding:0.25rem 0;"> <span>${t.nombre}</span><span style="font-weight:700;">€${t.total.toFixed(2)}</span></div>`).join('');
+
+    } catch (err) {
+      console.error('Error cargando dashboard:', err);
+      document.getElementById('kpiTopComercialesList').innerHTML = '<p class="text-center text-gray-600">Error cargando datos</p>';
+    }
+  }
+
+  // ============================================
+  // FACTURACIÓN (CEO / ADMIN)
+  // ============================================
+  renderFacturacionView() {
+    return `
+      <div>
+        <div class="flex justify-between mb-4">
+          <h2 class="text-2xl font-bold">Facturación</h2>
+          <div>
+            <input type="date" id="factDesde" class="input" style="display:inline-block; width:160px; margin-right:0.5rem;" />
+            <input type="date" id="factHasta" class="input" style="display:inline-block; width:160px; margin-right:0.5rem;" />
+            <button onclick="app.loadFacturacion()" class="btn btn-sm btn-gray">Filtrar</button>
+            <button onclick="app.exportFacturacionToExcel()" class="btn btn-sm btn-gold">Exportar Excel</button>
+          </div>
+        </div>
+
+        <div id="facturacionList">
+          <div class="card text-center py-8"><p class="text-gray-600">Cargando facturación...</p></div>
+        </div>
+      </div>
+    `;
+  }
+
+  async loadFacturacion() {
+    try {
+      const desde = document.getElementById('factDesde').value;
+      const hasta = document.getElementById('factHasta').value;
+
+      let query = supabaseClient
+        .from('pedidos')
+        .select('id, fecha, total, descuento_total, estado_facturacion, cliente:clientes(id,nombre), comercial:usuarios!pedidos_comercial_id_fkey(nombre)')
+        .order('fecha', { ascending: false })
+        .limit(500);
+
+      if (desde) query = query.gte('fecha', new Date(desde).toISOString());
+      if (hasta) query = query.lte('fecha', new Date(new Date(hasta).setHours(23,59,59,999)).toISOString());
+
+      const { data: pedidos, error } = await query;
+      if (error) throw error;
+
+      const container = document.getElementById('facturacionList');
+      if (!pedidos || pedidos.length === 0) {
+        container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600">No hay pedidos</p></div>`;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse: collapse;">
+            <thead style="background:#f9fafb;">
+              <tr>
+                <th style="padding:0.75rem; text-align:left;">Fecha</th>
+                <th style="padding:0.75rem; text-align:left;">Cliente</th>
+                <th style="padding:0.75rem; text-align:right;">Total</th>
+                <th style="padding:0.75rem; text-align:right;">Descuento</th>
+                <th style="padding:0.75rem; text-align:left;">Estado facturación</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pedidos.map(p => `
+                <tr style="border-top:1px solid #e5e7eb;">
+                  <td style="padding:0.75rem;">${new Date(p.fecha).toLocaleDateString()}</td>
+                  <td style="padding:0.75rem;">${p.cliente?.nombre || 'N/A'}</td>
+                  <td style="padding:0.75rem; text-align:right;">€${parseFloat(p.total || 0).toFixed(2)}</td>
+                  <td style="padding:0.75rem; text-align:right;">€${parseFloat(p.descuento_total || 0).toFixed(2)}</td>
+                  <td style="padding:0.75rem;">${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
+                    <select onchange="app.updatePedidoFacturacion('${p.id}', this.value)">
+                      <option value="pendiente de emitir factura" ${p.estado_facturacion === 'pendiente de emitir factura' ? 'selected' : ''}>Pendiente de emitir</option>
+                      <option value="factura emitida" ${p.estado_facturacion === 'factura emitida' ? 'selected' : ''}>Emitida</option>
+                      <option value="factura enviada" ${p.estado_facturacion === 'factura enviada' ? 'selected' : ''}>Enviada</option>
+                      <option value="factura cobrada" ${p.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Cobrada</option>
+                    </select>
+                  ` : (p.estado_facturacion || 'N/A')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+    } catch (err) {
+      console.error('Error cargando facturación:', err);
+      document.getElementById('facturacionList').innerHTML = `<div class="card text-center py-8"><p style="color:#ef4444;">Error cargando datos</p></div>`;
+    }
+  }
+
+  async exportFacturacionToExcel() {
+    try {
+      const desde = document.getElementById('factDesde').value;
+      const hasta = document.getElementById('factHasta').value;
+
+      let query = supabaseClient
+        .from('pedidos')
+        .select('id, fecha, total, descuento_total, estado_facturacion, items_json, cliente:clientes(id,nombre), comercial:usuarios!pedidos_comercial_id_fkey(nombre)')
+        .order('fecha', { ascending: false })
+        .limit(5000);
+
+      if (desde) query = query.gte('fecha', new Date(desde).toISOString());
+      if (hasta) query = query.lte('fecha', new Date(new Date(hasta).setHours(23,59,59,999)).toISOString());
+
+      const { data: pedidos } = await query;
+      const rows = (pedidos || []).map(p => ({
+        id: p.id,
+        fecha: new Date(p.fecha).toLocaleDateString(),
+        cliente: p.cliente?.nombre || '',
+        total: parseFloat(p.total || 0),
+        descuento_total: parseFloat(p.descuento_total || 0),
+        estado_facturacion: p.estado_facturacion || '',
+        comercial: p.comercial?.nombre || '',
+        items: JSON.stringify(p.items_json || [])
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Facturacion');
+      XLSX.writeFile(wb, `facturacion_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+    } catch (err) {
+      console.error('Error exportando facturación:', err);
+      showNotification('❌ Error exportando facturación');
+    }
+  }
+
+  async exportClientesToExcel() {
+    try {
+      const { data: clientes } = await supabaseClient
+        .from('clientes')
+        .select('*')
+        .order('nombre', { ascending: true })
+        .limit(5000);
+
+      const rows = (clientes || []).map(c => ({
+        id: c.id,
+        nombre: c.nombre,
+        empresa: c.empresa || '',
+        email: c.email || '',
+        telefono: c.telefono || '',
+        direccion: c.direccion || '',
+        ciudad: c.ciudad || '',
+        provincia: c.provincia || '',
+        fase: c.fase || '',
+        asignado_a: c.asignado_a || '',
+        fecha_creacion: c.fecha_creacion || ''
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+      XLSX.writeFile(wb, `clientes_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+    } catch (err) {
+      console.error('Error exportando clientes:', err);
+      showNotification('❌ Error exportando clientes');
+    }
+  }
+
+  async exportPedidosToExcel() {
+    try {
+      const { data: pedidos } = await supabaseClient
+        .from('pedidos')
+        .select('id, fecha, total, descuento_total, estado, estado_facturacion, cliente:clientes(id,nombre), comercial:usuarios!pedidos_comercial_id_fkey(nombre), items_json')
+        .order('fecha', { ascending: false })
+        .limit(5000);
+
+      const rows = (pedidos || []).map(p => ({
+        id: p.id,
+        fecha: new Date(p.fecha).toLocaleDateString(),
+        cliente: p.cliente?.nombre || '',
+        comercial: p.comercial?.nombre || '',
+        estado: p.estado || '',
+        estado_facturacion: p.estado_facturacion || '',
+        total: parseFloat(p.total || 0),
+        descuento_total: parseFloat(p.descuento_total || 0),
+        items: JSON.stringify(p.items_json || [])
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Pedidos');
+      XLSX.writeFile(wb, `pedidos_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+    } catch (err) {
+      console.error('Error exportando pedidos:', err);
+      showNotification('❌ Error exportando pedidos');
+    }
+  }
+
+
   filtrarFinanzas(filtro) {
     this.loadFinanzas(filtro);
   }
@@ -2475,7 +3100,7 @@ class VersumCRM {
   getCategoriaLabel(categoria) {
     const labels = {
       ventas: 'Ventas',
-      materias_primas: 'Materias Primas',
+      genero: 'Género',
       marketing: 'Marketing',
       transporte: 'Transporte',
       alquiler: 'Alquiler',
