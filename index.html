@@ -37,6 +37,11 @@
     .badge-green { background: #d1fae5; color: #065f46; }
     .badge-orange { background: #fed7aa; color: #9a3412; }
     .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-yellow { background: #fef9c3; color: #854d0e; }
+    /* Estado pedidos colores */
+    .estado-pendiente { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .estado-parcial { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+    .estado-servido { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
     .text-center { text-align: center; }
     .text-lg { font-size: 1.125rem; }
     .text-xl { font-size: 1.25rem; }
@@ -51,8 +56,11 @@
     .py-8 { padding: 2rem 0; }
     .grid { display: grid; gap: 1rem; }
     .grid-2 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
     .notification { position: fixed; top: 1rem; right: 1rem; background: white; padding: 1rem 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none; z-index: 2000; border-left: 4px solid #D4A574; }
     .notification.show { display: block; }
+    /* Agrupación */
+    .grupo-header { background: #f3f4f6; border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 0.5rem; margin-top: 1rem; font-weight: 700; color: #374151; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
   </style>
 </head>
 <body>
@@ -65,18 +73,6 @@
   <script>
 const SUPABASE_URL = 'https://pqwlzrfqmhmsvbqjscgj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxd2x6cmZxbWhtc3ZicWpzY2dqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2NDMyMDAsImV4cCI6MjA4NDIxOTIwMH0.aQo1-ZGyTpmNMHZS7FnppxDExv9nMrp7oxfFkfj5Bhw';
-
-if (SUPABASE_URL === 'TU_URL_AQUI' || SUPABASE_KEY === 'TU_API_KEY_AQUI') {
-  document.getElementById('root').innerHTML = `
-    <div style="min-height: 100vh; background: #000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
-      <div style="background: white; border-radius: 16px; padding: 2rem; max-width: 400px;">
-        <h1 style="font-size: 1.5rem; font-weight: 700; text-align: center; margin-bottom: 1rem;">⚠️ Configuración Pendiente</h1>
-        <p style="color: #6b7280; margin-bottom: 1rem;">Reemplaza SUPABASE_URL y SUPABASE_KEY en el código.</p>
-      </div>
-    </div>
-  `;
-  throw new Error('Configuración pendiente');
-}
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -113,16 +109,14 @@ class VersumCRM {
 
   async loadComerciales() {
     try {
-      const { data } = await supabaseClient
-        .from('usuarios')
-        .select('id, nombre, email, rol')
-        .eq('activo', true);
+      const { data } = await supabaseClient.from('usuarios').select('id, nombre, email, rol').eq('activo', true);
       this.comerciales = data || [];
-    } catch (err) {
-      console.error('Error cargando comerciales:', err);
-    }
+    } catch (err) { console.error('Error cargando comerciales:', err); }
   }
 
+  // ============================================
+  // LOGIN
+  // ============================================
   renderLogin() {
     document.getElementById('root').innerHTML = `
       <div style="min-height: 100vh; background: #000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
@@ -132,7 +126,6 @@ class VersumCRM {
           </div>
           <h1 style="font-size: 1.5rem; font-weight: 700; text-align: center; margin-bottom: 0.5rem;">VERSUM</h1>
           <p style="color: #D4A574; text-align: center; font-weight: 600; margin-bottom: 2rem;">Sistema de Gestión CRM</p>
-          
           <form onsubmit="app.handleLogin(event)">
             <div style="margin-bottom: 1rem;">
               <label class="label">Email</label>
@@ -142,8 +135,13 @@ class VersumCRM {
               <label class="label">Contraseña</label>
               <input type="password" id="password" class="input" required placeholder="••••••••" />
             </div>
+            <div id="loginError" style="display:none; background:#fee2e2; border:1px solid #fca5a5; border-radius:8px; padding:0.75rem; margin-bottom:0.75rem; color:#991b1b; font-size:0.875rem;"></div>
             <button type="submit" class="btn btn-gold" style="width: 100%;">Iniciar Sesión</button>
           </form>
+          <div style="background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+            <p style="font-size: 0.875rem; font-weight: 600;">Credenciales iniciales:</p>
+            <p style="font-size: 0.875rem; margin-top: 0.5rem;">Email: <strong>ceo@versum.com</strong></p>
+            <p style="font-size: 0.875rem;">Contraseña: <strong>versum2024</strong></p>
           </div>
         </div>
       </div>
@@ -154,20 +152,22 @@ class VersumCRM {
     e.preventDefault();
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
-
+    const btn = e.target.querySelector('button[type="submit"]');
+    const errDiv = document.getElementById('loginError');
+    if (btn) { btn.textContent = 'Conectando...'; btn.disabled = true; }
+    if (errDiv) errDiv.style.display = 'none';
     try {
-      const { data, error } = await supabaseClient
-        .from('usuarios')
-        .select('*')
-        .eq('email', email)
-        .eq('activo', true)
-        .single();
-
-      if (error || !data) {
-        showNotification('❌ Usuario o contraseña incorrectos');
+      const { data, error } = await supabaseClient.from('usuarios').select('*').eq('email', email).eq('activo', true).single();
+      if (error) {
+        const msg = error.code === 'PGRST116' ? '❌ No se encontró ningún usuario con ese email o está inactivo' : '❌ Error de conexión: ' + error.message;
+        if (errDiv) { errDiv.textContent = msg; errDiv.style.display = 'block'; }
+        else showNotification(msg, 5000);
         return;
       }
-
+      if (!data) {
+        if (errDiv) { errDiv.textContent = '❌ Usuario no encontrado o inactivo'; errDiv.style.display = 'block'; }
+        return;
+      }
       if (password === 'versum2024' || password === data.password_hash) {
         this.currentUser = data;
         localStorage.setItem('versum_user', JSON.stringify(data));
@@ -175,11 +175,16 @@ class VersumCRM {
         this.renderDashboard();
         showNotification('✅ Bienvenido a VERSUM');
       } else {
-        showNotification('❌ Usuario o contraseña incorrectos');
+        if (errDiv) { errDiv.textContent = '❌ Contraseña incorrecta'; errDiv.style.display = 'block'; }
+        else showNotification('❌ Contraseña incorrecta');
       }
     } catch (err) {
       console.error('Error login:', err);
-      showNotification('❌ Error al iniciar sesión');
+      const msg = '❌ Error al conectar. Comprueba la consola (F12) para más detalles.';
+      if (errDiv) { errDiv.textContent = msg; errDiv.style.display = 'block'; }
+      else showNotification(msg, 5000);
+    } finally {
+      if (btn) { btn.textContent = 'Iniciar Sesión'; btn.disabled = false; }
     }
   }
 
@@ -189,13 +194,11 @@ class VersumCRM {
     this.renderLogin();
   }
 
+  // ============================================
+  // DASHBOARD PRINCIPAL
+  // ============================================
   renderDashboard() {
-    const roleName = {
-      ceo: 'CEO',
-      admin: 'Administrador',
-      comercial: 'Comercial'
-    }[this.currentUser.rol] || this.currentUser.rol;
-
+    const roleName = { ceo: 'CEO', admin: 'Administrador', comercial: 'Comercial' }[this.currentUser.rol] || this.currentUser.rol;
     document.getElementById('root').innerHTML = `
       <div>
         <div class="header">
@@ -212,120 +215,97 @@ class VersumCRM {
             <button onclick="app.logout()" class="btn btn-gray btn-sm">Salir</button>
           </div>
         </div>
-
         <div class="nav">
           <div class="container" style="padding: 0;">
             <button onclick="app.navigateTo('clientes')" class="nav-btn active" id="nav-clientes">👥 Clientes</button>
             <button onclick="app.navigateTo('productos')" class="nav-btn" id="nav-productos">📦 Productos y Pedidos</button>
             <button onclick="app.navigateTo('agenda')" class="nav-btn" id="nav-agenda">📅 Agenda</button>
             <button onclick="app.navigateTo('finanzas')" class="nav-btn" id="nav-finanzas">💰 Finanzas</button>
-            ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') 
-              ? '<button onclick="app.navigateTo(\'dashboard\')" class="nav-btn" id="nav-dashboard">📊 Dashboard</button><button onclick="app.navigateTo(\'facturacion\')" class="nav-btn" id="nav-facturacion">🧾 Facturación</button><button onclick="app.navigateTo(\'usuarios\')" class="nav-btn" id="nav-usuarios">⚙️ Usuarios</button>' 
+            ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin')
+              ? '<button onclick="app.navigateTo(\'dashboard\')" class="nav-btn" id="nav-dashboard">📊 Dashboard</button><button onclick="app.navigateTo(\'facturacion\')" class="nav-btn" id="nav-facturacion">🧾 Facturación</button><button onclick="app.navigateTo(\'usuarios\')" class="nav-btn" id="nav-usuarios">⚙️ Usuarios</button>'
               : ''}
           </div>
         </div>
-
         <div class="container">
           <div id="mainContent">
-            <div class="card">
-              <p class="text-center text-gray-600">Cargando...</p>
-            </div>
+            <div class="card"><p class="text-center text-gray-600">Cargando...</p></div>
           </div>
         </div>
       </div>
     `;
-
     this.navigateTo('clientes');
   }
 
   navigateTo(tab) {
     this.currentTab = tab;
-    
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.classList.remove('active');
-    });
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = document.getElementById(`nav-${tab}`);
     if (activeBtn) activeBtn.classList.add('active');
-
     const content = document.getElementById('mainContent');
-    
     switch(tab) {
       case 'dashboard':
         if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
           content.innerHTML = this.renderDashboardView();
           this.loadDashboard();
-        } else {
-          content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>';
-        }
+        } else { content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>'; }
         break;
-      case 'clientes':
-        content.innerHTML = this.renderClientesView();
-        this.loadClientes();
-        break;
-      case 'productos':
-        content.innerHTML = this.renderProductosView();
-        this.loadProductos();
-        break;
-      case 'agenda':
-        content.innerHTML = this.renderAgendaView();
-        this.loadTareas('pendientes');
-        break;
+      case 'clientes': content.innerHTML = this.renderClientesView(); this.loadClientes(); break;
+      case 'productos': content.innerHTML = this.renderProductosView(); this.loadProductos(); break;
+      case 'agenda': content.innerHTML = this.renderAgendaView(); this.loadTareas('pendientes'); break;
       case 'facturacion':
         if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
-          content.innerHTML = this.renderFacturacionView();
-          this.loadFacturacion();
-        } else {
-          content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>';
-        }
+          content.innerHTML = this.renderFacturacionView(); this.loadFacturacion();
+        } else { content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>'; }
         break;
-      case 'finanzas':
-        content.innerHTML = this.renderFinanzasView();
-        this.loadFinanzas('todas');
-        break;
+      case 'finanzas': content.innerHTML = this.renderFinanzasView(); this.loadFinanzas('todas'); break;
       case 'usuarios':
-        if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') {
-          content.innerHTML = this.renderUsuariosView();
-          this.loadUsuarios();
-        }
+        if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') { content.innerHTML = this.renderUsuariosView(); this.loadUsuarios(); }
         break;
-      default:
-        content.innerHTML = '<div class="card"><h2 class="text-xl font-bold">Sección en desarrollo</h2></div>';
+      default: content.innerHTML = '<div class="card"><h2 class="text-xl font-bold">Sección en desarrollo</h2></div>';
     }
   }
 
   // ============================================
-  // CLIENTES
+  // MÓDULO CLIENTES - CON LOCALIDAD Y AGRUPACIONES
   // ============================================
-
   renderClientesView() {
     return `
       <div>
-        <div class="flex justify-between mb-4">
+        <div class="flex justify-between mb-4" style="flex-wrap:wrap; gap:0.5rem;">
           <h2 class="text-2xl font-bold">Gestión de Clientes</h2>
-          <div style="display:flex; gap:0.5rem; align-items:center;">
-            <input id="clientesSearch" oninput="app.loadClientes()" class="input" placeholder="Buscar cliente por nombre..." style="width:220px; margin-right:0.5rem;" />
-            <select id="clientesSort" onchange="app.loadClientes()" class="select" style="width:160px; margin-right:0.5rem;">
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <input id="clientesSearch" oninput="app.loadClientes()" class="input" placeholder="Buscar por nombre..." style="width:200px;" />
+            <select id="clientesSort" onchange="app.loadClientes()" class="select" style="width:150px;">
               <option value="nombre_asc">Nombre ↑</option>
               <option value="nombre_desc">Nombre ↓</option>
               <option value="fecha_desc">Fecha ↓</option>
               <option value="fecha_asc">Fecha ↑</option>
             </select>
-            <select id="clientesFase" onchange="app.loadClientes()" class="select" style="width:160px; margin-right:0.5rem;">
+            <select id="clientesFase" onchange="app.loadClientes()" class="select" style="width:150px;">
               <option value="">Todas las fases</option>
               <option value="contacto">Contacto</option>
               <option value="muestras">Muestras</option>
               <option value="cliente">Cliente</option>
               <option value="perdido">Perdido</option>
             </select>
-            <button onclick="app.exportClientesToExcel()" class="btn btn-sm btn-gold" style="margin-right:0.5rem;">Exportar Excel</button>
-            <button onclick="app.openModalImportClientes()" class="btn btn-sm btn-gray" style="margin-right:0.5rem;">📥 Importar clientes</button>
+            <select id="clientesAsignado" onchange="app.loadClientes()" class="select" style="width:160px;">
+              <option value="">Todos los usuarios</option>
+              <option value="sin_asignar">Sin asignar</option>
+              ${this.comerciales.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+            </select>
+            <select id="clientesAgrupacion" onchange="app.loadClientes()" class="select" style="width:160px;">
+              <option value="">Sin agrupar</option>
+              <option value="localidad">Agrupar por Localidad</option>
+              <option value="asignado">Agrupar por Comercial</option>
+              <option value="fase">Agrupar por Fase</option>
+            </select>
+            <button onclick="app.exportClientesToExcel()" class="btn btn-sm btn-gold">Exportar Excel</button>
+            <button onclick="app.openModalImportClientes()" class="btn btn-sm btn-gray">📥 Importar</button>
             <button onclick="app.openModalCliente()" class="btn btn-gold">+ Nuevo Cliente</button>
           </div>
         </div>
         <div id="clientesList" class="grid">
-          <div class="card text-center py-8">
-            <p class="text-gray-600">Cargando clientes...</p>
-          </div>
+          <div class="card text-center py-8"><p class="text-gray-600">Cargando clientes...</p></div>
         </div>
       </div>
 
@@ -362,6 +342,11 @@ class VersumCRM {
                 <label class="label">Dirección</label>
                 <input type="text" id="clienteDireccion" class="input" />
               </div>
+              <!-- NUEVO: Localidad -->
+              <div class="mb-4">
+                <label class="label">Localidad</label>
+                <input type="text" id="clienteLocalidad" class="input" placeholder="Ej: Donostia, Bilbao, Vitoria..." />
+              </div>
               <div class="grid grid-2">
                 <div class="mb-4">
                   <label class="label">Fase *</label>
@@ -396,87 +381,109 @@ class VersumCRM {
 
   async loadClientes() {
     try {
-      const sort = document.getElementById('clientesSort')?.value || 'fecha_desc';
-      const faseFiltro = document.getElementById('clientesFase')?.value || '';
-      const search = document.getElementById('clientesSearch')?.value?.toLowerCase() || '';
-
       let query = supabaseClient
         .from('clientes')
-        .select('*, asignado:usuarios!clientes_asignado_a_fkey(id, nombre, email)');
+        .select('*, asignado:usuarios!clientes_asignado_a_fkey(id, nombre, email)')
+        .order('fecha_creacion', { ascending: false });
+
+      const sort = document.getElementById('clientesSort')?.value || 'fecha_desc';
+      const faseFiltro = document.getElementById('clientesFase')?.value || '';
+      const asignadoFiltro = document.getElementById('clientesAsignado')?.value || '';
+      const search = document.getElementById('clientesSearch')?.value?.toLowerCase() || '';
+      const agrupacion = document.getElementById('clientesAgrupacion')?.value || '';
 
       if (faseFiltro) query = query.eq('fase', faseFiltro);
+      if (asignadoFiltro === 'sin_asignar') query = query.is('asignado_a', null);
+      else if (asignadoFiltro) query = query.eq('asignado_a', asignadoFiltro);
 
       if (this.currentUser.rol === 'comercial') {
         query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
       }
 
-      // CORRECCIÓN 1: eliminada la opción 'comercial' que causaba el error 400
       switch (sort) {
         case 'nombre_asc': query = query.order('nombre', { ascending: true }); break;
         case 'nombre_desc': query = query.order('nombre', { ascending: false }); break;
         case 'fecha_asc': query = query.order('fecha_creacion', { ascending: true }); break;
-        case 'fecha_desc':
-        default: query = query.order('fecha_creacion', { ascending: false }); break;
+        case 'fecha_desc': query = query.order('fecha_creacion', { ascending: false }); break;
       }
 
       const { data: clientes, error } = await query;
       if (error) throw error;
 
       const container = document.getElementById('clientesList');
-      
       if (!clientes || clientes.length === 0) {
-        container.innerHTML = `
-          <div class="card text-center py-8">
-            <p class="text-gray-600 mb-4">No hay clientes registrados</p>
-            <button onclick="app.openModalCliente()" class="btn btn-gold">Crear Primer Cliente</button>
-          </div>
-        `;
+        container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600 mb-4">No hay clientes registrados</p><button onclick="app.openModalCliente()" class="btn btn-gold">Crear Primer Cliente</button></div>`;
         return;
       }
 
-      const clientesFiltrados = search ? clientes.filter(c => (c.nombre || '').toLowerCase().includes(search)) : clientes;
+      let clientesFiltrados = search ? clientes.filter(c => (c.nombre || '').toLowerCase().includes(search)) : clientes;
 
-      container.innerHTML = clientesFiltrados.map(c => `
-        <div class="card">
-          <div class="flex justify-between">
-            <div style="flex: 1;">
-              <div class="flex gap-2 mb-2" style="align-items: center;">
-                <h3 class="text-lg font-bold">${c.nombre}</h3>
-                <span class="badge ${this.getFaseColor(c.fase)}">${this.getFaseLabel(c.fase)}</span>
-              </div>
-              ${c.empresa ? `<p class="text-gray-600 font-bold">${c.empresa}</p>` : ''}
-              <div class="mt-2" style="font-size: 0.875rem; color: #6b7280;">
-                ${c.email ? `<p>📧 ${c.email}</p>` : ''}
-                ${c.telefono ? `<p>📞 ${c.telefono}</p>` : ''}
-                ${c.direccion ? `<p>📍 ${c.direccion}</p>` : ''}
-              </div>
-              <div class="mt-2">
-                ${c.asignado ? 
-                  `<span class="badge badge-green">👤 ${c.asignado.nombre}</span>` : 
-                  `<span class="badge badge-orange">⚠️ Sin asignar</span>
-                   ${this.currentUser.rol === 'comercial' ? 
-                     `<button onclick="app.tomarCliente('${c.id}', '${c.nombre}')" class="btn btn-blue btn-sm" style="margin-left: 0.5rem;">Tomar Cliente</button>` : ''}`
-                }
-              </div>
-              ${c.notas ? `<p class="mt-2" style="font-size: 0.875rem; color: #6b7280; font-style: italic;">${c.notas}</p>` : ''}
+      // AGRUPACIÓN
+      if (agrupacion) {
+        let grupos = {};
+        clientesFiltrados.forEach(c => {
+          let key = '';
+          if (agrupacion === 'localidad') key = c.localidad || 'Sin localidad';
+          else if (agrupacion === 'asignado') key = c.asignado?.nombre || 'Sin asignar';
+          else if (agrupacion === 'fase') key = this.getFaseLabel(c.fase) || 'Sin fase';
+          if (!grupos[key]) grupos[key] = [];
+          grupos[key].push(c);
+        });
+
+        const sortedKeys = Object.keys(grupos).sort();
+        container.innerHTML = sortedKeys.map(key => `
+          <div>
+            <div class="grupo-header">
+              ${agrupacion === 'localidad' ? '📍' : agrupacion === 'asignado' ? '👤' : '🏷️'}
+              ${key} <span style="background: #d1d5db; border-radius: 9999px; padding: 0.1rem 0.5rem; font-size: 0.75rem; margin-left: 0.25rem;">${grupos[key].length}</span>
             </div>
-            <div class="flex gap-2" style="align-items: flex-start;">
-              <button onclick="app.editCliente('${c.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 6px; font-size: 1.25rem;" title="Editar">✏️</button>
-              <button onclick="app.deleteCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 6px; font-size: 1.25rem;" title="Eliminar">🗑️</button>
-            </div>
+            ${grupos[key].map(c => this.renderClienteCard(c)).join('')}
           </div>
-        </div>
-      `).join('');
+        `).join('');
+      } else {
+        container.innerHTML = clientesFiltrados.map(c => this.renderClienteCard(c)).join('');
+      }
 
     } catch (err) {
       console.error('Error cargando clientes:', err);
-      document.getElementById('clientesList').innerHTML = `
-        <div class="card text-center py-8">
-          <p style="color: #ef4444;">Error cargando clientes</p>
-          <button onclick="app.loadClientes()" class="btn btn-blue btn-sm mt-2">Reintentar</button>
-        </div>
-      `;
+      document.getElementById('clientesList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando clientes</p><button onclick="app.loadClientes()" class="btn btn-blue btn-sm mt-2">Reintentar</button></div>`;
     }
+  }
+
+  renderClienteCard(c) {
+    return `
+      <div class="card">
+        <div class="flex justify-between">
+          <div style="flex: 1;">
+            <div class="flex gap-2 mb-2" style="align-items: center;">
+              <h3 class="text-lg font-bold">${c.nombre}</h3>
+              <span class="badge ${this.getFaseColor(c.fase)}">${this.getFaseLabel(c.fase)}</span>
+            </div>
+            ${c.empresa ? `<p class="text-gray-600 font-bold">${c.empresa}</p>` : ''}
+            <div class="mt-2" style="font-size: 0.875rem; color: #6b7280;">
+              ${c.email ? `<p>📧 ${c.email}</p>` : ''}
+              ${c.telefono ? `<p>📞 ${c.telefono}</p>` : ''}
+              ${c.direccion ? `<p>📍 ${c.direccion}</p>` : ''}
+              ${c.localidad ? `<p>🏙️ ${c.localidad}</p>` : ''}
+            </div>
+            <div class="mt-2">
+              ${c.asignado
+                ? `<span class="badge badge-green">👤 ${c.asignado.nombre}</span>`
+                : `<span class="badge badge-orange">⚠️ Sin asignar</span>
+                   ${this.currentUser.rol === 'comercial'
+                     ? `<button onclick="app.tomarCliente('${c.id}', '${c.nombre}')" class="btn btn-blue btn-sm" style="margin-left: 0.5rem;">Tomar Cliente</button>`
+                     : ''}`
+              }
+            </div>
+            ${c.notas ? `<p class="mt-2" style="font-size: 0.875rem; color: #6b7280; font-style: italic;">${c.notas}</p>` : ''}
+          </div>
+          <div class="flex gap-2" style="align-items: flex-start;">
+            <button onclick="app.editCliente('${c.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 6px; font-size: 1.25rem;" title="Editar">✏️</button>
+            <button onclick="app.deleteCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 6px; font-size: 1.25rem;" title="Eliminar">🗑️</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   getFaseColor(fase) {
@@ -494,39 +501,33 @@ class VersumCRM {
     const modal = document.getElementById('modalCliente');
     const title = document.getElementById('modalClienteTitle');
     const btn = document.getElementById('btnGuardarCliente');
-
     const selectAsignado = document.getElementById('clienteAsignado');
-    selectAsignado.innerHTML = '<option value="">Sin asignar</option>' + 
+    selectAsignado.innerHTML = '<option value="">Sin asignar</option>' +
       this.comerciales.map(c => `<option value="${c.id}">${c.nombre} (${c.rol})</option>`).join('');
 
     if (cliente) {
-      title.textContent = 'Editar Cliente';
-      btn.textContent = 'Actualizar Cliente';
+      title.textContent = 'Editar Cliente'; btn.textContent = 'Actualizar Cliente';
       document.getElementById('clienteNombre').value = cliente.nombre || '';
       document.getElementById('clienteEmpresa').value = cliente.empresa || '';
       document.getElementById('clienteEmail').value = cliente.email || '';
       document.getElementById('clienteTelefono').value = cliente.telefono || '';
       document.getElementById('clienteDireccion').value = cliente.direccion || '';
+      document.getElementById('clienteLocalidad').value = cliente.localidad || '';
       document.getElementById('clienteFase').value = cliente.fase || 'contacto';
       document.getElementById('clienteAsignado').value = cliente.asignado_a || '';
       document.getElementById('clienteNotas').value = cliente.notas || '';
     } else {
-      title.textContent = 'Nuevo Cliente';
-      btn.textContent = 'Guardar Cliente';
+      title.textContent = 'Nuevo Cliente'; btn.textContent = 'Guardar Cliente';
       document.getElementById('clienteNombre').value = '';
       document.getElementById('clienteEmpresa').value = '';
       document.getElementById('clienteEmail').value = '';
       document.getElementById('clienteTelefono').value = '';
       document.getElementById('clienteDireccion').value = '';
+      document.getElementById('clienteLocalidad').value = '';
       document.getElementById('clienteFase').value = 'contacto';
       document.getElementById('clienteNotas').value = '';
-      if (this.currentUser.rol === 'comercial') {
-        document.getElementById('clienteAsignado').value = this.currentUser.id;
-      } else {
-        document.getElementById('clienteAsignado').value = '';
-      }
+      document.getElementById('clienteAsignado').value = this.currentUser.rol === 'comercial' ? this.currentUser.id : '';
     }
-
     modal.classList.add('active');
   }
 
@@ -545,33 +546,21 @@ class VersumCRM {
               <button onclick="app.closeModalImportClientes()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
             </div>
             <div class="modal-body">
-              <div class="mb-4">
-                <label class="label">Archivo (.xlsx / .csv)</label>
-                <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" class="input" />
-              </div>
-              <div class="mb-4">
-                <label class="label"><input type="checkbox" id="importUpsertEmail" /> Usar <strong>upsert</strong> por <code>email</code> (actualizar si existe)</label>
-              </div>
-              <div class="mb-4">
-                <label class="label">Chunk size (filas por petición)</label>
-                <input type="number" id="importChunkSize" class="input" value="100" min="10" />
-              </div>
-              <div id="importPreview" style="max-height: 240px; overflow: auto; border: 1px solid #e5e7eb; padding: 0.5rem; border-radius:8px; background:#fafafa;">
-                <p class="text-gray-600">Carga un archivo para ver la vista previa.</p>
-              </div>
+              <div class="mb-4"><label class="label">Archivo (.xlsx / .csv)</label><input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" class="input" /></div>
+              <div class="mb-4"><label class="label"><input type="checkbox" id="importUpsertEmail" /> Usar upsert por email</label></div>
+              <div class="mb-4"><label class="label">Chunk size</label><input type="number" id="importChunkSize" class="input" value="100" min="10" /></div>
+              <div id="importPreview" style="max-height: 240px; overflow: auto; border: 1px solid #e5e7eb; padding: 0.5rem; border-radius:8px; background:#fafafa;"><p class="text-gray-600">Carga un archivo para ver la vista previa.</p></div>
             </div>
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalImportClientes()" class="btn btn-gray">Cancelar</button>
               <button type="button" onclick="app.confirmImport()" class="btn btn-gold" id="btnConfirmImport">Importar</button>
             </div>
           </div>
-        </div>
-      `;
+        </div>`;
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
       document.body.appendChild(wrapper.firstElementChild);
     }
-
     document.getElementById('importPreview').innerHTML = '<p class="text-gray-600">Carga un archivo para ver la vista previa.</p>';
     const input = document.getElementById('importFileInput');
     if (input) { input.value = ''; input.onchange = (e) => this.handleImportFileInput(e); }
@@ -594,97 +583,69 @@ class VersumCRM {
         const text = new TextDecoder().decode(arrayBuffer);
         document.getElementById('importPreview').innerHTML = '<pre style="white-space:pre-wrap;font-size:0.9rem;">'+text.slice(0,2000)+'</pre>';
         this.importPreviewRows = [];
-        showNotification('CSV cargado. Nota: la vista previa es simplificada.');
         return;
       } else {
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       }
-
       const preview = [];
-      const errors = [];
-      for (const r of rows) {
-        const nombre = r.nombre || r.Nombre || r.name || r.Name || '';
-        const empresa = r.empresa || r.Empresa || r.company || r.Company || '';
+      rows.forEach(r => {
+        const nombre = r.nombre || r.Nombre || r.name || '';
+        const empresa = r.empresa || r.Empresa || '';
         const email = r.email || r.Email || '';
-        const telefono = r.telefono || r.Telefono || r.phone || r.Phone || '';
-        const direccion = r.direccion || r.Direccion || r.address || r.Address || '';
+        const telefono = r.telefono || r.Telefono || '';
+        const direccion = r.direccion || r.Direccion || '';
+        const localidad = r.localidad || r.Localidad || '';
         const fase = r.fase || r.Fase || '';
         const valid = nombre && (email || empresa);
-        if (!valid) errors.push({row: r, reason: 'Falta nombre o email/empresa'});
-        preview.push({ nombre, empresa, email, telefono, direccion, fase, valid });
-      }
-
+        preview.push({ nombre, empresa, email, telefono, direccion, localidad, fase, valid });
+      });
       this.importPreviewRows = preview;
-
-      const rowsHtml = preview.slice(0,100).map((p, i) => `<tr><td>${i+1}</td><td>${p.nombre}</td><td>${p.empresa}</td><td>${p.email}</td><td>${p.telefono}</td><td>${p.fase}</td><td style="color:${p.valid? '#065f46':'#ef4444'}">${p.valid? 'OK':'ERROR'}</td></tr>`).join('');
-      document.getElementById('importPreview').innerHTML = `<div style="max-height:200px;overflow:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th>#</th><th>Nombre</th><th>Empresa</th><th>Email</th><th>Tel</th><th>Fase</th><th>Estado</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><p class="text-sm text-gray-500">${preview.length} filas (mostrando ${Math.min(preview.length,100)}). ${errors.length} errores detectados.</p>`;
-
-    } catch (err) {
-      console.error('Error parseando archivo:', err);
-      showNotification('❌ Error al parsear archivo');
-    }
+      const rowsHtml = preview.slice(0,100).map((p, i) => `<tr><td>${i+1}</td><td>${p.nombre}</td><td>${p.empresa}</td><td>${p.email}</td><td>${p.localidad}</td><td style="color:${p.valid? '#065f46':'#ef4444'}">${p.valid? 'OK':'ERROR'}</td></tr>`).join('');
+      document.getElementById('importPreview').innerHTML = `<div style="max-height:200px;overflow:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th>#</th><th>Nombre</th><th>Empresa</th><th>Email</th><th>Localidad</th><th>Estado</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><p style="font-size:0.8rem;color:#6b7280;">${preview.length} filas. ${preview.filter(p=>!p.valid).length} errores.</p>`;
+    } catch (err) { console.error('Error parseando archivo:', err); showNotification('❌ Error al parsear archivo'); }
   }
 
   async confirmImport() {
-    if (!this.importPreviewRows || this.importPreviewRows.length === 0) { showNotification('❌ No hay filas para importar'); return; }
+    if (!this.importPreviewRows || !this.importPreviewRows.length) { showNotification('❌ No hay filas para importar'); return; }
     const upsert = document.getElementById('importUpsertEmail').checked;
     const chunkSize = parseInt(document.getElementById('importChunkSize').value, 10) || 100;
-
     const validRows = this.importPreviewRows.filter(r => r.valid).map(r => ({
-      nombre: r.nombre,
-      empresa: r.empresa || null,
-      email: r.email || null,
-      telefono: r.telefono || null,
-      direccion: r.direccion || null,
+      nombre: r.nombre, empresa: r.empresa || null, email: r.email || null,
+      telefono: r.telefono || null, direccion: r.direccion || null,
+      localidad: r.localidad || null,
       fase: (['contacto','muestras','cliente','perdido'].includes(r.fase) ? r.fase : 'contacto'),
-      fecha_creacion: new Date().toISOString(),
-      notas: ''
+      fecha_creacion: new Date().toISOString(), notas: ''
     }));
-
-    if (validRows.length === 0) { showNotification('❌ No hay filas válidas para importar'); return; }
-
+    if (!validRows.length) { showNotification('❌ No hay filas válidas'); return; }
     try {
-      let inserted = 0; let failed = 0;
+      let inserted = 0, failed = 0;
       for (let i = 0; i < validRows.length; i += chunkSize) {
         const chunk = validRows.slice(i, i+chunkSize);
-        if (upsert) {
-          const { data, error } = await supabaseClient.from('clientes').upsert(chunk, { onConflict: 'email' });
-          if (error) { failed += chunk.length; console.error('Upsert error:', error); } else {
-            inserted += (data || []).filter(d => d && d.id).length;
-          }
-        } else {
-          const { data, error } = await supabaseClient.from('clientes').insert(chunk);
-          if (error) { failed += chunk.length; console.error('Insert error:', error); } else { inserted += (data || []).length; }
-        }
+        if (upsert) { const { error } = await supabaseClient.from('clientes').upsert(chunk, { onConflict: 'email' }); if (error) failed += chunk.length; else inserted += chunk.length; }
+        else { const { error } = await supabaseClient.from('clientes').insert(chunk); if (error) failed += chunk.length; else inserted += chunk.length; }
       }
-
-      showNotification(`✅ Import finalizado: ${inserted} procesados, ${failed} fallos`);
-      const modal = document.getElementById('modalImportClientes'); if (modal) modal.classList.remove('active');
+      showNotification(`✅ Import: ${inserted} procesados, ${failed} fallos`);
+      const m = document.getElementById('modalImportClientes'); if (m) m.classList.remove('active');
       this.loadClientes();
-
-    } catch (err) {
-      console.error('Error importando clientes:', err);
-      showNotification('❌ Error durante import');
-    }
+    } catch (err) { console.error('Error importando:', err); showNotification('❌ Error durante import'); }
   }
 
   async handleClienteSubmit(e) {
     e.preventDefault();
-
     const clienteData = {
       nombre: document.getElementById('clienteNombre').value,
       empresa: document.getElementById('clienteEmpresa').value || null,
       email: document.getElementById('clienteEmail').value || null,
       telefono: document.getElementById('clienteTelefono').value || null,
       direccion: document.getElementById('clienteDireccion').value || null,
+      localidad: document.getElementById('clienteLocalidad').value || null,
       fase: document.getElementById('clienteFase').value,
       asignado_a: document.getElementById('clienteAsignado').value || null,
       notas: document.getElementById('clienteNotas').value || null,
       ultima_interaccion: new Date().toISOString()
     };
-
     try {
       if (this.editingCliente) {
         const { error } = await supabaseClient.from('clientes').update(clienteData).eq('id', this.editingCliente.id);
@@ -700,14 +661,9 @@ class VersumCRM {
         await this.crearTareaAutomatica(data);
         showNotification('✅ Cliente creado correctamente');
       }
-
       this.closeModalCliente();
       this.loadClientes();
-
-    } catch (err) {
-      console.error('Error guardando cliente:', err);
-      showNotification('❌ Error al guardar cliente');
-    }
+    } catch (err) { console.error('Error guardando cliente:', err); showNotification('❌ Error al guardar cliente'); }
   }
 
   async editCliente(id) {
@@ -715,10 +671,7 @@ class VersumCRM {
       const { data, error } = await supabaseClient.from('clientes').select('*').eq('id', id).single();
       if (error) throw error;
       this.openModalCliente(data);
-    } catch (err) {
-      console.error('Error cargando cliente:', err);
-      showNotification('❌ Error al cargar cliente');
-    }
+    } catch (err) { console.error('Error cargando cliente:', err); showNotification('❌ Error al cargar cliente'); }
   }
 
   async deleteCliente(id, nombre) {
@@ -727,15 +680,10 @@ class VersumCRM {
       const { error } = await supabaseClient.from('clientes').delete().eq('id', id);
       if (error) throw error;
       await this.registrarActividad('eliminar', 'clientes', id, { nombre });
-      if (this.currentUser.rol === 'comercial') {
-        await this.notificarCEO('cliente_eliminado', `${this.currentUser.nombre} eliminó el cliente "${nombre}"`, { cliente_id: id, cliente_nombre: nombre });
-      }
+      if (this.currentUser.rol === 'comercial') await this.notificarCEO('cliente_eliminado', `${this.currentUser.nombre} eliminó "${nombre}"`, { cliente_id: id });
       showNotification('✅ Cliente eliminado');
       this.loadClientes();
-    } catch (err) {
-      console.error('Error eliminando cliente:', err);
-      showNotification('❌ Error al eliminar cliente');
-    }
+    } catch (err) { console.error('Error eliminando cliente:', err); showNotification('❌ Error al eliminar cliente'); }
   }
 
   async tomarCliente(id, nombre) {
@@ -744,13 +692,10 @@ class VersumCRM {
       const { error } = await supabaseClient.from('clientes').update({ asignado_a: this.currentUser.id, ultima_interaccion: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
       await this.registrarActividad('asignar', 'clientes', id, { nombre, asignado_a: this.currentUser.nombre });
-      await this.notificarCEO('cliente_tomado', `${this.currentUser.nombre} se asignó el cliente "${nombre}"`, { cliente_id: id, cliente_nombre: nombre });
+      await this.notificarCEO('cliente_tomado', `${this.currentUser.nombre} se asignó "${nombre}"`, { cliente_id: id });
       showNotification('✅ Cliente asignado correctamente');
       this.loadClientes();
-    } catch (err) {
-      console.error('Error tomando cliente:', err);
-      showNotification('❌ Error al asignar cliente');
-    }
+    } catch (err) { console.error('Error tomando cliente:', err); showNotification('❌ Error al asignar cliente'); }
   }
 
   async crearTareaAutomatica(cliente) {
@@ -768,48 +713,28 @@ class VersumCRM {
     fechaTarea.setDate(fechaTarea.getDate() + dias);
     try {
       await supabaseClient.from('tareas').insert([{
-        cliente_id: cliente.id,
-        comercial_id: cliente.asignado_a || this.currentUser.id,
-        descripcion: descripcion,
-        fecha: fechaTarea.toISOString().split('T')[0],
-        completada: false,
-        tipo: 'seguimiento',
-        plazo_dias: dias
+        cliente_id: cliente.id, comercial_id: cliente.asignado_a || this.currentUser.id,
+        descripcion, fecha: fechaTarea.toISOString().split('T')[0], completada: false, tipo: 'seguimiento', plazo_dias: dias
       }]);
-    } catch (err) {
-      console.error('Error creando tarea automática:', err);
-    }
+    } catch (err) { console.error('Error creando tarea automática:', err); }
   }
 
   async registrarActividad(accion, tabla, registroId, datos) {
     try {
-      await supabaseClient.from('historial_actividad').insert([{
-        usuario_id: this.currentUser.id,
-        accion: accion,
-        tabla: tabla,
-        registro_id: registroId,
-        datos_despues: datos
-      }]);
-    } catch (err) {
-      console.error('Error registrando actividad:', err);
-    }
+      await supabaseClient.from('historial_actividad').insert([{ usuario_id: this.currentUser.id, accion, tabla, registro_id: registroId, datos_despues: datos }]);
+    } catch (err) { console.error('Error registrando actividad:', err); }
   }
 
   async notificarCEO(tipo, mensaje, datos) {
     try {
       const { data: ceo } = await supabaseClient.from('usuarios').select('id').eq('rol', 'ceo').eq('activo', true).single();
-      if (ceo) {
-        await supabaseClient.from('notificaciones').insert([{ usuario_id: ceo.id, tipo: tipo, mensaje: mensaje, datos: datos, leida: false }]);
-      }
-    } catch (err) {
-      console.error('Error notificando CEO:', err);
-    }
+      if (ceo) await supabaseClient.from('notificaciones').insert([{ usuario_id: ceo.id, tipo, mensaje, datos, leida: false }]);
+    } catch (err) { console.error('Error notificando CEO:', err); }
   }
 
   // ============================================
-  // PRODUCTOS Y PEDIDOS
+  // MÓDULO PRODUCTOS Y PEDIDOS
   // ============================================
-
   renderProductosView() {
     return `
       <div>
@@ -834,13 +759,11 @@ class VersumCRM {
               <button id="togglePedidosProductosBtn" class="btn btn-gray" onclick="app.toggleProductosVisibility()">${this.pedidosProductosHidden ? 'Mostrar productos' : 'Ocultar productos'}</button>
             </div>
           </div>
-          <div id="pedidosList">
-            <p class="text-center text-gray-600">Cargando pedidos...</p>
-          </div>
+          <div id="pedidosList"><p class="text-center text-gray-600">Cargando pedidos...</p></div>
         </div>
       </div>
 
-      <!-- Modal Producto -->
+      <!-- Modal Producto - CON CAMPO LOTE -->
       <div id="modalProducto" class="modal">
         <div class="modal-content">
           <div class="modal-header">
@@ -863,14 +786,20 @@ class VersumCRM {
                   <input type="number" id="productoPrecio" class="input" required min="0" step="0.01" />
                 </div>
               </div>
-              <div class="mb-4">
-                <label class="label">Unidad</label>
-                <select id="productoUnidad" class="select">
-                  <option value="botellas">Botellas</option>
-                  <option value="latas">Latas</option>
-                  <option value="barriles">Barriles</option>
-                  <option value="cajas">Cajas</option>
-                </select>
+              <div class="grid grid-2">
+                <div class="mb-4">
+                  <label class="label">Unidad</label>
+                  <select id="productoUnidad" class="select">
+                    <option value="botellas">Botellas</option>
+                    <option value="latas">Latas</option>
+                    <option value="barriles">Barriles</option>
+                    <option value="cajas">Cajas</option>
+                  </select>
+                </div>
+                <div class="mb-4">
+                  <label class="label">Lote</label>
+                  <input type="text" id="productoLote" class="input" placeholder="Ej: LOT-2025-001" />
+                </div>
               </div>
             </div>
             <div class="modal-footer">
@@ -885,30 +814,25 @@ class VersumCRM {
       <div id="modalPedido" class="modal">
         <div class="modal-content" style="max-width: 800px;">
           <div class="modal-header">
-            <h2 class="text-xl font-bold">Nuevo Pedido (Múltiples Productos)</h2>
+            <h2 class="text-xl font-bold" id="modalPedidoTitle">Nuevo Pedido (Múltiples Productos)</h2>
             <button onclick="app.closeModalPedido()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
           </div>
           <form onsubmit="app.handlePedidoSubmit(event)">
             <div class="modal-body">
               <div class="mb-4">
                 <label class="label">Cliente *</label>
-                <select id="pedidoCliente" class="select" required>
-                  <option value="">Seleccionar cliente...</option>
-                </select>
+                <select id="pedidoCliente" class="select" required></select>
                 <div id="nuevoClienteDiv" style="display:none; margin-top:0.5rem;">
                   <label class="label">Nombre Cliente Nuevo *</label>
                   <input type="text" id="nuevoClienteNombre" class="input" placeholder="Nombre del cliente" />
                 </div>
               </div>
-
               <div style="border: 2px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
                 <h3 class="text-lg font-bold mb-4">Agregar Productos al Pedido</h3>
                 <div class="grid grid-2 gap-2 mb-3">
                   <div>
                     <label class="label">Producto</label>
-                    <select id="pedidoProducto" class="select" onchange="app.updatePrecioProductoModal()">
-                      <option value="">Seleccionar producto...</option>
-                    </select>
+                    <select id="pedidoProducto" class="select" onchange="app.updatePrecioProductoModal()"></select>
                   </div>
                   <div>
                     <label class="label">Cantidad</label>
@@ -927,11 +851,9 @@ class VersumCRM {
                 </div>
                 <button type="button" onclick="app.agregarProductoAlPedido()" class="btn btn-blue" style="width: 100%;">+ Agregar Producto al Pedido</button>
               </div>
-
               <div id="pedidoItemsList" style="border: 1px solid #d1d5db; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; min-height: 100px; background: #f9fafb;">
                 <p class="text-gray-600 text-center">No hay productos agregados</p>
               </div>
-
               <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
                 <div class="grid grid-2 gap-2 mb-3">
                   <div>
@@ -944,21 +866,15 @@ class VersumCRM {
                   </div>
                 </div>
                 <div style="border-top: 2px solid #bfdbfe; padding-top: 1rem;">
-                  <div class="flex justify-between mb-2" style="font-size: 1.125rem; font-weight: 600;">
-                    <span>Subtotal:</span><span id="pedidoSubtotal">€0.00</span>
-                  </div>
-                  <div class="flex justify-between mb-2" style="color: #dc2626;">
-                    <span>Descuentos:</span><span id="pedidoTotalDescuentos">€0.00</span>
-                  </div>
-                  <div class="flex justify-between" style="font-size: 1.25rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;">
-                    <span>TOTAL:</span><span id="pedidoTotal">€0.00</span>
-                  </div>
+                  <div class="flex justify-between mb-2" style="font-size: 1.125rem; font-weight: 600;"><span>Subtotal:</span><span id="pedidoSubtotal">€0.00</span></div>
+                  <div class="flex justify-between mb-2" style="color: #dc2626;"><span>Descuentos:</span><span id="pedidoTotalDescuentos">€0.00</span></div>
+                  <div class="flex justify-between" style="font-size: 1.25rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;"><span>TOTAL:</span><span id="pedidoTotal">€0.00</span></div>
                 </div>
               </div>
             </div>
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalPedido()" class="btn btn-gray">Cancelar</button>
-              <button type="submit" class="btn btn-gold">Registrar Pedido Completo</button>
+              <button type="submit" class="btn btn-gold" id="btnSubmitPedido">Registrar Pedido Completo</button>
             </div>
           </form>
         </div>
@@ -970,13 +886,11 @@ class VersumCRM {
     try {
       const { data: productos, error } = await supabaseClient.from('productos').select('*').order('nombre', { ascending: true });
       if (error) throw error;
-
       const container = document.getElementById('productosList');
-      if (!productos || productos.length === 0) {
+      if (!productos || !productos.length) {
         container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600 mb-4">No hay productos registrados</p><button onclick="app.openModalProducto()" class="btn btn-gold">Crear Primer Producto</button></div>`;
         return;
       }
-
       container.innerHTML = productos.map(p => {
         const stockBajo = p.stock < 50;
         return `
@@ -985,6 +899,7 @@ class VersumCRM {
               <div>
                 <h3 class="text-lg font-bold">${p.nombre}</h3>
                 <p class="text-2xl font-bold gold mt-2">€${parseFloat(p.precio).toFixed(2)}</p>
+                ${p.lote ? `<p style="font-size:0.8rem; color:#6b7280; margin-top:0.25rem;">🏷️ Lote: <strong>${p.lote}</strong></p>` : ''}
               </div>
               <div class="flex gap-2" style="align-items: flex-start;">
                 <button onclick="app.editProducto('${p.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem;">✏️</button>
@@ -997,12 +912,10 @@ class VersumCRM {
           </div>
         `;
       }).join('');
-
     } catch (err) {
       console.error('Error cargando productos:', err);
       document.getElementById('productosList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando productos</p></div>`;
     }
-
     this.loadPedidos();
     const prodEl = document.getElementById('productosList');
     if (prodEl) prodEl.style.display = this.productosListHidden ? 'none' : 'grid';
@@ -1010,41 +923,34 @@ class VersumCRM {
     if (toggleBtn) toggleBtn.textContent = this.productosListHidden ? 'Mostrar productos' : 'Ocultar productos';
   }
 
-  // CORRECCIÓN 2: única función loadPedidos, sin join a productos, usando items_json
+  // PEDIDOS CON ESTADO CON COLOR Y BOTÓN ELIMINAR
   async loadPedidos() {
     const container = document.getElementById('pedidosList');
     if (container) container.innerHTML = '<p class="text-center text-gray-600">Cargando pedidos...</p>';
-
     try {
-      if (!this.currentUser) {
-        if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Sesión no iniciada</p>';
-        return;
-      }
-
       let query = supabaseClient
         .from('pedidos')
         .select(`*, cliente:clientes(nombre, empresa), comercial:usuarios!pedidos_comercial_id_fkey(nombre)`)
         .order('fecha', { ascending: false })
         .limit(50);
-
-      if (this.currentUser.rol === 'comercial') {
-        query = query.eq('comercial_id', this.currentUser.id);
-      }
-
+      if (this.currentUser.rol === 'comercial') query = query.eq('comercial_id', this.currentUser.id);
       const { data: pedidos, error } = await query;
       if (error) throw error;
-
-      if (!pedidos || pedidos.length === 0) {
-        if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>';
-        return;
-      }
+      if (!pedidos || !pedidos.length) { if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>'; return; }
 
       container.innerHTML = pedidos.map(ped => {
         const items = ped.items_json || [];
+        const subtotal = ped.subtotal || 0;
         const descuentoTotal = ped.descuento_total || 0;
         const descuentoPct = ped.descuento_porcentaje || 0;
-        const subtotal = ped.subtotal || 0;
         const totalDescuentos = descuentoTotal + ((subtotal * descuentoPct) / 100);
+        const canEdit = (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin' || ped.comercial_id === this.currentUser.id);
+        const isHidden = this.collapsedPedidos[ped.id] || this.pedidosProductosHidden;
+
+        // Estado colores
+        let estadoClass = 'estado-pendiente';
+        if (ped.estado === 'servido') estadoClass = 'estado-servido';
+        else if (ped.estado === 'parcialmente servido') estadoClass = 'estado-parcial';
 
         return `
           <div class="card" style="margin-bottom: 1rem;">
@@ -1055,12 +961,19 @@ class VersumCRM {
               </div>
               <div style="text-align: right;">
                 <p style="font-weight: 600; color: #D4A574; font-size: 1.25rem;">€${parseFloat(ped.total).toFixed(2)}</p>
-                <span class="badge ${ped.estado === 'servido' ? 'badge-green' : ped.estado === 'parcialmente servido' ? 'badge-orange' : 'badge-red'}">${ped.estado}</span>
+                <!-- ESTADO CON COLORES -->
+                ${canEdit ? `
+                  <select onchange="app.updateEstadoPedido('${ped.id}', this.value)" style="margin-top:0.25rem; padding:0.3rem 0.5rem; border-radius:6px; border:2px solid #e5e7eb; font-weight:600; font-size:0.8rem; cursor:pointer; background:white;" class="${estadoClass}">
+                    <option value="pendiente de servir" ${ped.estado === 'pendiente de servir' ? 'selected' : ''} style="background:white; color:#991b1b;">🔴 Pendiente de servir</option>
+                    <option value="parcialmente servido" ${ped.estado === 'parcialmente servido' ? 'selected' : ''} style="background:white; color:#854d0e;">🟡 Parcialmente servido</option>
+                    <option value="servido" ${ped.estado === 'servido' ? 'selected' : ''} style="background:white; color:#065f46;">🟢 Servido</option>
+                  </select>
+                ` : `<span class="badge ${estadoClass}" style="margin-top:0.25rem; display:inline-block;">${ped.estado}</span>`}
               </div>
             </div>
 
             <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
-              ${ (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
+              ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
                 <div style="margin-bottom:0.5rem;">
                   <label class="label" style="font-size:0.85rem; margin-bottom:0.25rem; display:block;">Estado de facturación</label>
                   <select onchange="app.updatePedidoFacturacion('${ped.id}', this.value)" style="padding:0.4rem; border-radius:6px;">
@@ -1070,16 +983,16 @@ class VersumCRM {
                     <option value="factura cobrada" ${ped.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Factura cobrada</option>
                   </select>
                 </div>
-              ` : `<div style="margin-top:0.5rem;"><strong>Factura:</strong> ${ped.estado_facturacion || 'N/A'}</div>` }
+              ` : `<div style="margin-bottom:0.5rem;"><strong>Factura:</strong> ${ped.estado_facturacion || 'N/A'}</div>`}
               <div class="flex justify-between" style="align-items:center; margin-bottom:0.5rem;">
                 <p style="font-size: 0.875rem; font-weight: 600; margin: 0;">Productos (${items.length}):</p>
-                <button id="pedido-toggle-${ped.id}" class="btn btn-gray" style="font-size:0.8rem; padding:0.2rem 0.5rem;" onclick="app.togglePedidoItems('${ped.id}')">${(this.collapsedPedidos[ped.id] || this.pedidosProductosHidden) ? 'Mostrar productos' : 'Ocultar productos'}</button>
+                <button id="pedido-toggle-${ped.id}" class="btn btn-gray" style="font-size:0.8rem; padding:0.2rem 0.5rem;" onclick="app.togglePedidoItems('${ped.id}')">${isHidden ? 'Mostrar productos' : 'Ocultar productos'}</button>
               </div>
-              <div id="pedido-items-${ped.id}" class="pedido-items" style="display: ${(this.collapsedPedidos[ped.id] || this.pedidosProductosHidden) ? 'none' : 'block'};">
+              <div id="pedido-items-${ped.id}" class="pedido-items" style="display: ${isHidden ? 'none' : 'block'};">
                 ${items.map(item => `
                   <div style="font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
                     • ${item.cantidad}x ${item.producto_nombre} @ €${parseFloat(item.precio_unitario).toFixed(2)}/u
-                    ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;">(- ${item.descuento_unitario}%)</span>` : ''}
+                    ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;"> (-${item.descuento_unitario}%)</span>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -1091,74 +1004,107 @@ class VersumCRM {
               <div class="flex justify-between" style="font-size: 0.875rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;"><span>TOTAL:</span><span>€${parseFloat(ped.total).toFixed(2)}</span></div>
             </div>
 
-            ${(() => {
-              const canEdit = (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin' || ped.comercial_id === this.currentUser.id);
-              return canEdit ? `
-                <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center;">
-                  <div style="font-size:0.875rem; color:#6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>
-                  <button onclick="app.openModalEditPedido('${ped.id}')" class="btn btn-sm btn-gray">Editar</button>
-                </div>
-              ` : `<div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>`;
-            })()}
+            ${canEdit ? `
+              <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div style="font-size:0.875rem; color:#6b7280; flex:1;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>
+                <button onclick="app.openModalEditPedido('${ped.id}')" class="btn btn-sm btn-gray">✏️ Editar</button>
+                <button onclick="app.deletePedido('${ped.id}', '${(ped.cliente?.nombre || 'este pedido').replace(/'/g, "\\'")}')" class="btn btn-sm btn-red">🗑️ Eliminar</button>
+              </div>
+            ` : `<div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>`}
           </div>
         `;
       }).join('');
-
     } catch (err) {
       console.error('Error cargando pedidos:', err);
       if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Error cargando pedidos</p>';
     }
   }
 
+  // NUEVO: Actualizar estado de servicio del pedido
+  async updateEstadoPedido(pedidoId, nuevoEstado) {
+    try {
+      const { error } = await supabaseClient.from('pedidos').update({ estado: nuevoEstado }).eq('id', pedidoId);
+      if (error) throw error;
+      await this.registrarActividad('actualizar', 'pedidos', pedidoId, { estado: nuevoEstado });
+      showNotification(`✅ Estado actualizado: ${nuevoEstado}`);
+      // Actualizar visualmente el select
+      this.loadPedidos();
+    } catch (err) { console.error('Error actualizando estado:', err); showNotification('❌ Error al actualizar estado'); }
+  }
+
+  // NUEVO: Eliminar pedido con recuperación de stock
+  async deletePedido(pedidoId, nombreCliente) {
+    if (!confirm(`¿Eliminar el pedido de "${nombreCliente}"? El stock de todos los productos se recuperará automáticamente.`)) return;
+    try {
+      const { data: pedido, error: errGet } = await supabaseClient.from('pedidos').select('items_json, total').eq('id', pedidoId).single();
+      if (errGet || !pedido) { showNotification('❌ No se pudo obtener el pedido'); return; }
+
+      const items = pedido.items_json || [];
+      // Recuperar stock de cada producto
+      for (const item of items) {
+        if (!item.producto_id) continue;
+        const { data: prod } = await supabaseClient.from('productos').select('stock').eq('id', item.producto_id).single();
+        if (prod) {
+          await supabaseClient.from('productos').update({ stock: prod.stock + item.cantidad }).eq('id', item.producto_id);
+        }
+      }
+
+      const { error: errDel } = await supabaseClient.from('pedidos').delete().eq('id', pedidoId);
+      if (errDel) throw errDel;
+
+      await this.registrarActividad('eliminar', 'pedidos', pedidoId, { cliente: nombreCliente });
+      showNotification('✅ Pedido eliminado y stock recuperado');
+      this.loadProductos();
+    } catch (err) { console.error('Error eliminando pedido:', err); showNotification('❌ Error al eliminar pedido'); }
+  }
+
   async updatePedidoFacturacion(pedidoId, nuevoEstado) {
     try {
       const { error: errUpdate } = await supabaseClient.from('pedidos').update({ estado_facturacion: nuevoEstado }).eq('id', pedidoId);
       if (errUpdate) throw errUpdate;
-
       if (nuevoEstado === 'factura cobrada') {
         const concept = `Cobro factura pedido ${pedidoId}`;
         const { data: exists } = await supabaseClient.from('finanzas').select('id').eq('concepto', concept).limit(1);
         if (!exists || exists.length === 0) {
-          const { data: pedido } = await supabaseClient.from('pedidos').select('total, comercial_id').eq('id', pedidoId).single();
+          const { data: pedido } = await supabaseClient.from('pedidos').select('total, comercial_id, fecha, cliente_id').eq('id', pedidoId).single();
           if (pedido) {
-            await supabaseClient.from('finanzas').insert([{ tipo: 'ingreso', concepto: concept, monto: pedido.total, categoria: 'ventas', comercial_id: pedido.comercial_id, fecha: new Date().toISOString() }]);
+            // Obtener nombre del cliente para concepto legible
+            const { data: cliente } = await supabaseClient.from('clientes').select('nombre').eq('id', pedido.cliente_id).single();
+            const fechaPedido = pedido.fecha ? new Date(pedido.fecha).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'numeric'}) : '';
+            const nombreCliente = cliente?.nombre || '';
+            const conceptoLegible = `Cobro factura pedido ${fechaPedido}${nombreCliente ? ' ' + nombreCliente : ''}`;
+            await supabaseClient.from('finanzas').insert([{
+              tipo: 'ingreso', concepto: conceptoLegible, monto: pedido.total,
+              categoria: 'ventas', comercial_id: pedido.comercial_id, fecha: new Date().toISOString()
+            }]);
           }
         }
       }
-
       showNotification('✅ Estado de facturación actualizado');
       if (typeof this.loadFacturacion === 'function') this.loadFacturacion();
       this.loadFinanzas('todas');
       this.registrarActividad('actualizar', 'pedidos', pedidoId, { estado_facturacion: nuevoEstado });
-
-    } catch (err) {
-      console.error('Error actualizando estado de facturación:', err);
-      showNotification('❌ Error al actualizar estado de facturación');
-    }
+    } catch (err) { console.error('Error actualizando facturación:', err); showNotification('❌ Error al actualizar estado de facturación'); }
   }
 
   async openModalEditPedido(pedidoId) {
     try {
       const { data: pedido } = await supabaseClient.from('pedidos').select('*, cliente:clientes(id,nombre), items_json').eq('id', pedidoId).single();
       if (!pedido) { showNotification('❌ Pedido no encontrado'); return; }
-
       this.editingPedidoId = pedidoId;
       this.pedidoItems = pedido.items_json || [];
-
-      await this.openModalPedido();
+      // Cargar clientes y productos en el modal
+      await this.openModalPedido(true);
       document.getElementById('pedidoCliente').value = pedido.cliente?.id || '';
       document.getElementById('nuevoClienteDiv').style.display = 'none';
-      document.getElementById('modalPedido').querySelector('.modal-header h2').textContent = 'Editar Pedido';
-      const footerBtn = document.querySelector('#modalPedido .modal-footer button[type="submit"]');
-      if (footerBtn) footerBtn.textContent = 'Actualizar Pedido';
+      document.getElementById('modalPedidoTitle').textContent = 'Editar Pedido';
+      document.getElementById('btnSubmitPedido').textContent = 'Actualizar Pedido';
+      document.getElementById('pedidoDescuentoTotal').value = pedido.descuento_total || 0;
+      document.getElementById('pedidoDescuentoPct').value = pedido.descuento_porcentaje || 0;
       this.renderPedidoItems();
       this.calcularTotalPedido();
       document.getElementById('modalPedido').classList.add('active');
-
-    } catch (err) {
-      console.error('Error abriendo modal de edición de pedido:', err);
-      showNotification('❌ Error al abrir edición de pedido');
-    }
+    } catch (err) { console.error('Error abriendo edición pedido:', err); showNotification('❌ Error al abrir edición de pedido'); }
   }
 
   toggleProductosList() {
@@ -1168,6 +1114,7 @@ class VersumCRM {
     if (el) el.style.display = this.productosListHidden ? 'none' : 'grid';
     const btn = document.getElementById('toggleProductosListBtn');
     if (btn) btn.textContent = this.productosListHidden ? 'Mostrar productos' : 'Ocultar productos';
+    showNotification(this.productosListHidden ? 'Productos ocultados' : 'Productos visibles');
   }
 
   toggleProductosVisibility() {
@@ -1199,20 +1146,19 @@ class VersumCRM {
       document.getElementById('productoStock').value = producto.stock || 0;
       document.getElementById('productoPrecio').value = producto.precio || 0;
       document.getElementById('productoUnidad').value = producto.unidad || 'botellas';
+      document.getElementById('productoLote').value = producto.lote || '';
     } else {
       title.textContent = 'Nuevo Producto'; btn.textContent = 'Guardar Producto';
       document.getElementById('productoNombre').value = '';
       document.getElementById('productoStock').value = 0;
       document.getElementById('productoPrecio').value = 0;
       document.getElementById('productoUnidad').value = 'botellas';
+      document.getElementById('productoLote').value = '';
     }
     modal.classList.add('active');
   }
 
-  closeModalProducto() {
-    document.getElementById('modalProducto').classList.remove('active');
-    this.editingProducto = null;
-  }
+  closeModalProducto() { document.getElementById('modalProducto').classList.remove('active'); this.editingProducto = null; }
 
   async handleProductoSubmit(e) {
     e.preventDefault();
@@ -1220,7 +1166,8 @@ class VersumCRM {
       nombre: document.getElementById('productoNombre').value,
       stock: parseInt(document.getElementById('productoStock').value),
       precio: parseFloat(document.getElementById('productoPrecio').value),
-      unidad: document.getElementById('productoUnidad').value
+      unidad: document.getElementById('productoUnidad').value,
+      lote: document.getElementById('productoLote').value || null
     };
     try {
       if (this.editingProducto) {
@@ -1232,12 +1179,8 @@ class VersumCRM {
         if (error) throw error;
         showNotification('✅ Producto creado');
       }
-      this.closeModalProducto();
-      this.loadProductos();
-    } catch (err) {
-      console.error('Error guardando producto:', err);
-      showNotification('❌ Error al guardar producto');
-    }
+      this.closeModalProducto(); this.loadProductos();
+    } catch (err) { console.error('Error guardando producto:', err); showNotification('❌ Error al guardar producto'); }
   }
 
   async editProducto(id) {
@@ -1245,10 +1188,7 @@ class VersumCRM {
       const { data, error } = await supabaseClient.from('productos').select('*').eq('id', id).single();
       if (error) throw error;
       this.openModalProducto(data);
-    } catch (err) {
-      console.error('Error cargando producto:', err);
-      showNotification('❌ Error al cargar producto');
-    }
+    } catch (err) { console.error('Error cargando producto:', err); showNotification('❌ Error al cargar producto'); }
   }
 
   async deleteProducto(id, nombre) {
@@ -1256,97 +1196,72 @@ class VersumCRM {
     try {
       const { error } = await supabaseClient.from('productos').delete().eq('id', id);
       if (error) throw error;
-      showNotification('✅ Producto eliminado');
-      this.loadProductos();
-    } catch (err) {
-      console.error('Error eliminando producto:', err);
-      showNotification('❌ Error al eliminar producto');
-    }
+      showNotification('✅ Producto eliminado'); this.loadProductos();
+    } catch (err) { console.error('Error eliminando producto:', err); showNotification('❌ Error al eliminar producto'); }
   }
 
-  async openModalPedido() {
-    const modal = document.getElementById('modalPedido');
-    this.pedidoItems = [];
-
+  // MODAL PEDIDO
+  async openModalPedido(soloCargarDatos = false) {
+    if (!soloCargarDatos) {
+      this.pedidoItems = [];
+      this.editingPedidoId = null;
+      document.getElementById('modalPedidoTitle').textContent = 'Nuevo Pedido (Múltiples Productos)';
+      document.getElementById('btnSubmitPedido').textContent = 'Registrar Pedido Completo';
+    }
     try {
       let query = supabaseClient.from('clientes').select('id, nombre, empresa').order('nombre', { ascending: true });
-      if (this.currentUser.rol === 'comercial') {
-        query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
-      }
+      if (this.currentUser.rol === 'comercial') query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
       const { data: clientes } = await query;
-
       const selectCliente = document.getElementById('pedidoCliente');
       selectCliente.innerHTML = '<option value="">Seleccionar cliente...</option><option value="__new">+ Cliente nuevo</option>' +
         (clientes || []).map(c => `<option value="${c.id}">${c.nombre}${c.empresa ? ' - ' + c.empresa : ''}</option>`).join('');
-
-      selectCliente.onchange = () => {
-        const nuevoDiv = document.getElementById('nuevoClienteDiv');
-        nuevoDiv.style.display = selectCliente.value === '__new' ? 'block' : 'none';
-      };
-
+      selectCliente.onchange = () => { document.getElementById('nuevoClienteDiv').style.display = selectCliente.value === '__new' ? 'block' : 'none'; };
       const { data: productos } = await supabaseClient.from('productos').select('*').order('nombre', { ascending: true });
       const selectProducto = document.getElementById('pedidoProducto');
       selectProducto.innerHTML = '<option value="">Seleccionar producto...</option>' +
         (productos || []).map(p => `<option value="${p.id}" data-precio="${p.precio}" data-stock="${p.stock}" data-nombre="${p.nombre}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
-
-      document.getElementById('pedidoCantidad').value = 1;
-      document.getElementById('pedidoPrecio').value = 0;
-      document.getElementById('pedidoDescuentoUnit').value = 0;
-      document.getElementById('pedidoDescuentoTotal').value = 0;
-      document.getElementById('pedidoDescuentoPct').value = 0;
-      this.renderPedidoItems();
-      this.calcularTotalPedido();
-      modal.classList.add('active');
-
-    } catch (err) {
-      console.error('Error abriendo modal pedido:', err);
-      showNotification('❌ Error al cargar datos del pedido');
-    }
+      if (!soloCargarDatos) {
+        document.getElementById('pedidoCantidad').value = 1;
+        document.getElementById('pedidoPrecio').value = 0;
+        document.getElementById('pedidoDescuentoUnit').value = 0;
+        document.getElementById('pedidoDescuentoTotal').value = 0;
+        document.getElementById('pedidoDescuentoPct').value = 0;
+        this.renderPedidoItems();
+        this.calcularTotalPedido();
+        document.getElementById('modalPedido').classList.add('active');
+      }
+    } catch (err) { console.error('Error abriendo modal pedido:', err); showNotification('❌ Error al cargar datos del pedido'); }
   }
 
   closeModalPedido() {
     document.getElementById('modalPedido').classList.remove('active');
     this.pedidoItems = [];
     this.editingPedidoId = null;
-    const footerBtn = document.querySelector('#modalPedido .modal-footer button[type="submit"]');
-    if (footerBtn) footerBtn.textContent = 'Registrar Pedido Completo';
-    try { document.getElementById('modalPedido').querySelector('.modal-header h2').textContent = 'Nuevo Pedido (Múltiples Productos)'; } catch(e){}
+    document.getElementById('btnSubmitPedido').textContent = 'Registrar Pedido Completo';
+    document.getElementById('modalPedidoTitle').textContent = 'Nuevo Pedido (Múltiples Productos)';
     const nuevoDiv = document.getElementById('nuevoClienteDiv'); if (nuevoDiv) nuevoDiv.style.display = 'none';
   }
 
   updatePrecioProductoModal() {
     const select = document.getElementById('pedidoProducto');
-    const selectedOption = select.options[select.selectedIndex];
-    document.getElementById('pedidoPrecio').value = selectedOption.getAttribute('data-precio') || 0;
+    const precio = select.options[select.selectedIndex]?.getAttribute('data-precio');
+    document.getElementById('pedidoPrecio').value = precio || 0;
   }
 
   agregarProductoAlPedido() {
     const selectProducto = document.getElementById('pedidoProducto');
     const selectedOption = selectProducto.options[selectProducto.selectedIndex];
     const productoId = selectProducto.value;
-    const productoNombre = selectedOption.getAttribute('data-nombre');
+    const productoNombre = selectedOption?.getAttribute('data-nombre');
     const cantidad = parseInt(document.getElementById('pedidoCantidad').value);
     const precioUnitario = parseFloat(document.getElementById('pedidoPrecio').value);
     const descuentoUnitPct = parseFloat(document.getElementById('pedidoDescuentoUnit').value) || 0;
-    const stock = parseInt(selectedOption.getAttribute('data-stock'));
-
+    const stock = parseInt(selectedOption?.getAttribute('data-stock'));
     if (!productoId) { showNotification('❌ Selecciona un producto'); return; }
     if (cantidad <= 0) { showNotification('❌ La cantidad debe ser mayor a 0'); return; }
     if (cantidad > stock) { showNotification(`❌ Stock insuficiente. Disponible: ${stock}`); return; }
-
-    const descuentoFactor = Math.max(0, Math.min(100, descuentoUnitPct)) / 100;
-    const subtotalCalc = (cantidad * precioUnitario) * (1 - descuentoFactor);
-
-    this.pedidoItems.push({
-      id: Date.now(),
-      producto_id: productoId,
-      producto_nombre: productoNombre,
-      cantidad: cantidad,
-      precio_unitario: precioUnitario,
-      descuento_unitario: descuentoUnitPct,
-      subtotal: parseFloat(subtotalCalc.toFixed(2))
-    });
-
+    const subtotalCalc = (cantidad * precioUnitario) * (1 - Math.max(0, Math.min(100, descuentoUnitPct)) / 100);
+    this.pedidoItems.push({ id: Date.now(), producto_id: productoId, producto_nombre: productoNombre, cantidad, precio_unitario: precioUnitario, descuento_unitario: descuentoUnitPct, subtotal: parseFloat(subtotalCalc.toFixed(2)) });
     document.getElementById('pedidoProducto').value = '';
     document.getElementById('pedidoCantidad').value = 1;
     document.getElementById('pedidoPrecio').value = 0;
@@ -1358,19 +1273,12 @@ class VersumCRM {
 
   renderPedidoItems() {
     const container = document.getElementById('pedidoItemsList');
-    if (this.pedidoItems.length === 0) {
-      container.innerHTML = '<p class="text-gray-600 text-center">No hay productos agregados</p>';
-      return;
-    }
+    if (!this.pedidoItems.length) { container.innerHTML = '<p class="text-gray-600 text-center">No hay productos agregados</p>'; return; }
     container.innerHTML = this.pedidoItems.map((item, idx) => `
       <div style="background: white; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #D4A574;">
         <div style="flex: 1;">
           <p class="font-bold">${item.producto_nombre}</p>
-          <p style="font-size: 0.875rem; color: #6b7280;">
-            ${item.cantidad} x €${item.precio_unitario.toFixed(2)}
-            ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;"> - ${item.descuento_unitario}%</span>` : ''}
-            = <span class="font-bold">€${item.subtotal.toFixed(2)}</span>
-          </p>
+          <p style="font-size: 0.875rem; color: #6b7280;">${item.cantidad} x €${item.precio_unitario.toFixed(2)}${item.descuento_unitario > 0 ? ` <span style="color: #dc2626;">(-${item.descuento_unitario}%)</span>` : ''} = <span class="font-bold">€${item.subtotal.toFixed(2)}</span></p>
         </div>
         <button type="button" onclick="app.eliminarProductoDelPedido(${idx})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-weight: 600;">Eliminar</button>
       </div>
@@ -1387,7 +1295,7 @@ class VersumCRM {
 
   calcularTotalPedido() {
     let subtotal = 0;
-    this.pedidoItems.forEach(item => { subtotal += item.subtotal; });
+    this.pedidoItems.forEach(item => subtotal += item.subtotal);
     const descuentoTotal = parseFloat(document.getElementById('pedidoDescuentoTotal').value) || 0;
     const descuentoPct = parseFloat(document.getElementById('pedidoDescuentoPct').value) || 0;
     const descuentoPctMonto = (subtotal * descuentoPct) / 100;
@@ -1400,95 +1308,65 @@ class VersumCRM {
 
   async handlePedidoSubmit(e) {
     e.preventDefault();
-    const clienteId = document.getElementById('pedidoCliente').value;
+    let clienteId = document.getElementById('pedidoCliente').value;
     if (!clienteId) { showNotification('❌ Selecciona un cliente'); return; }
-    if (this.pedidoItems.length === 0) { showNotification('❌ Agrega al menos un producto al pedido'); return; }
-
+    if (!this.pedidoItems.length) { showNotification('❌ Agrega al menos un producto al pedido'); return; }
     try {
       const descuentoTotal = parseFloat(document.getElementById('pedidoDescuentoTotal').value) || 0;
       const descuentoPct = parseFloat(document.getElementById('pedidoDescuentoPct').value) || 0;
       let subtotal = 0;
-      this.pedidoItems.forEach(item => { subtotal += item.subtotal; });
-      const descuentoPctMonto = (subtotal * descuentoPct) / 100;
-      const total = Math.max(0, subtotal - descuentoTotal - descuentoPctMonto);
+      this.pedidoItems.forEach(item => subtotal += item.subtotal);
+      const totalDescuentos = descuentoTotal + (subtotal * descuentoPct / 100);
+      const total = Math.max(0, subtotal - totalDescuentos);
+      const itemsGuardar = this.pedidoItems.map(item => ({ producto_id: item.producto_id, producto_nombre: item.producto_nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, descuento_unitario: item.descuento_unitario, subtotal: item.subtotal }));
 
-      const itemsGuardar = this.pedidoItems.map(item => ({
-        producto_id: item.producto_id,
-        producto_nombre: item.producto_nombre,
-        cantidad: item.cantidad,
-        precio_unitario: item.precio_unitario,
-        descuento_unitario: item.descuento_unitario,
-        subtotal: item.subtotal
-      }));
-
-      // CORRECCIÓN 3: al crear cliente nuevo desde pedido, se asigna fase 'cliente'
-      let clienteFinalId = clienteId;
       if (clienteId === '__new') {
         const nuevoNombre = document.getElementById('nuevoClienteNombre').value?.trim();
         if (!nuevoNombre) { showNotification('❌ Escribe el nombre del cliente nuevo'); return; }
-        const { data: newCliente, error: errCli } = await supabaseClient
-          .from('clientes')
-          .insert([{
-            nombre: nuevoNombre,
-            fase: 'cliente',
-            asignado_a: this.currentUser.id,
-            fecha_creacion: new Date().toISOString()
-          }])
-          .select()
-          .single();
+        const { data: newCliente, error: errCli } = await supabaseClient.from('clientes').insert([{ nombre: nuevoNombre, asignado_a: this.currentUser.id }]).select().single();
         if (errCli) throw errCli;
-        clienteFinalId = newCliente.id;
+        clienteId = newCliente.id;
       }
 
       if (this.editingPedidoId) {
-        const { error: errUpdate } = await supabaseClient.from('pedidos').update({
-          cliente_id: clienteFinalId, items_json: itemsGuardar, subtotal, descuento_total: descuentoTotal, descuento_porcentaje: descuentoPct, total, fecha: new Date().toISOString()
-        }).eq('id', this.editingPedidoId);
+        // Editar pedido existente: recuperar stock anterior y restar nuevo
+        const { data: pedidoAnterior } = await supabaseClient.from('pedidos').select('items_json').eq('id', this.editingPedidoId).single();
+        if (pedidoAnterior?.items_json) {
+          for (const item of pedidoAnterior.items_json) {
+            if (!item.producto_id) continue;
+            const { data: prod } = await supabaseClient.from('productos').select('stock').eq('id', item.producto_id).single();
+            if (prod) await supabaseClient.from('productos').update({ stock: prod.stock + item.cantidad }).eq('id', item.producto_id);
+          }
+        }
+        for (const item of this.pedidoItems) {
+          const { data: prod } = await supabaseClient.from('productos').select('stock').eq('id', item.producto_id).single();
+          if (prod) await supabaseClient.from('productos').update({ stock: prod.stock - item.cantidad }).eq('id', item.producto_id);
+        }
+        const { error: errUpdate } = await supabaseClient.from('pedidos').update({ cliente_id: clienteId, items_json: itemsGuardar, subtotal, descuento_total: descuentoTotal, descuento_porcentaje: descuentoPct, total, fecha: new Date().toISOString() }).eq('id', this.editingPedidoId);
         if (errUpdate) throw errUpdate;
         showNotification('✅ Pedido actualizado correctamente');
-        this.closeModalPedido();
-        this.editingPedidoId = null;
-        this.loadProductos();
-        return;
-      }
-
-      const { data: pedidoData, error: errorPedido } = await supabaseClient.from('pedidos').insert([{
-        cliente_id: clienteFinalId,
-        comercial_id: this.currentUser.id,
-        items_json: itemsGuardar,
-        subtotal,
-        descuento_total: descuentoTotal,
-        descuento_porcentaje: descuentoPct,
-        total,
-        estado: 'pendiente de servir',
-        estado_facturacion: 'pendiente de emitir factura',
-        fecha: new Date().toISOString()
-      }]).select();
-      if (errorPedido) throw errorPedido;
-
-      for (const item of this.pedidoItems) {
-        const { data: productoActual } = await supabaseClient.from('productos').select('stock').eq('id', item.producto_id).single();
-        if (productoActual) {
-          await supabaseClient.from('productos').update({ stock: productoActual.stock - item.cantidad }).eq('id', item.producto_id);
+      } else {
+        const { data: pedidoData, error: errorPedido } = await supabaseClient.from('pedidos').insert([{
+          cliente_id: clienteId, comercial_id: this.currentUser.id, items_json: itemsGuardar,
+          subtotal, descuento_total: descuentoTotal, descuento_porcentaje: descuentoPct, total,
+          estado: 'pendiente de servir', estado_facturacion: 'pendiente de emitir factura', fecha: new Date().toISOString()
+        }]).select();
+        if (errorPedido) throw errorPedido;
+        for (const item of this.pedidoItems) {
+          const { data: prod } = await supabaseClient.from('productos').select('stock').eq('id', item.producto_id).single();
+          if (prod) await supabaseClient.from('productos').update({ stock: prod.stock - item.cantidad }).eq('id', item.producto_id);
         }
+        await this.registrarActividad('crear', 'pedidos', pedidoData[0].id, { cliente_id: clienteId, total });
+        showNotification('✅ Pedido registrado correctamente');
       }
-
-      await this.registrarActividad('crear', 'pedidos', pedidoData[0].id, { cliente_id: clienteFinalId, total, cantidad_productos: this.pedidoItems.length, estado: 'pendiente de servir' });
-      showNotification('✅ Pedido registrado correctamente');
       this.closeModalPedido();
       this.loadProductos();
-
-    } catch (err) {
-      console.error('Error registrando pedido:', err);
-      showNotification('❌ Error al registrar pedido');
-    }
+    } catch (err) { console.error('Error registrando pedido:', err); showNotification('❌ Error al registrar pedido'); }
   }
 
   // ============================================
-  // AGENDA Y TAREAS
+  // AGENDA
   // ============================================
-
-  // CORRECCIÓN 4: modal de plazos añadido al HTML de renderAgendaView
   renderAgendaView() {
     return `
       <div>
@@ -1499,18 +1377,10 @@ class VersumCRM {
             <button onclick="app.openModalTarea()" class="btn btn-gold">+ Nueva Tarea</button>
           </div>
         </div>
-
         <div class="grid grid-2 mb-4">
-          <div class="card" style="background: linear-gradient(135deg, #fef3c7, #fde68a); border-left: 4px solid #f59e0b;">
-            <h3 class="font-bold mb-2">Tareas Pendientes</h3>
-            <p class="text-3xl font-bold" style="color: #92400e;" id="countPendientes">0</p>
-          </div>
-          <div class="card" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-left: 4px solid #10b981;">
-            <h3 class="font-bold mb-2">Tareas Completadas</h3>
-            <p class="text-3xl font-bold" style="color: #065f46;" id="countCompletadas">0</p>
-          </div>
+          <div class="card" style="background: linear-gradient(135deg, #fef3c7, #fde68a); border-left: 4px solid #f59e0b;"><h3 class="font-bold mb-2">Tareas Pendientes</h3><p class="text-3xl font-bold" style="color: #92400e;" id="countPendientes">0</p></div>
+          <div class="card" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-left: 4px solid #10b981;"><h3 class="font-bold mb-2">Tareas Completadas</h3><p class="text-3xl font-bold" style="color: #065f46;" id="countCompletadas">0</p></div>
         </div>
-
         <div class="card mb-4">
           <div class="flex gap-2" style="flex-wrap: wrap;">
             <button onclick="app.filtrarTareas('pendientes')" class="btn btn-sm" id="filtro-pendientes" style="background: #f59e0b; color: white;">Pendientes</button>
@@ -1520,10 +1390,7 @@ class VersumCRM {
             <button onclick="app.filtrarTareas('todas')" class="btn btn-sm btn-gray" id="filtro-todas">Todas</button>
           </div>
         </div>
-
-        <div id="tareasList">
-          <div class="card text-center py-8"><p class="text-gray-600">Cargando tareas...</p></div>
-        </div>
+        <div id="tareasList"><div class="card text-center py-8"><p class="text-gray-600">Cargando tareas...</p></div></div>
       </div>
 
       <!-- Modal Tarea -->
@@ -1535,37 +1402,13 @@ class VersumCRM {
           </div>
           <form onsubmit="app.handleTareaSubmit(event)">
             <div class="modal-body">
-              <div class="mb-4">
-                <label class="label">Cliente</label>
-                <select id="tareaCliente" class="select">
-                  <option value="">Sin cliente asociado</option>
-                </select>
-              </div>
-              <div class="mb-4">
-                <label class="label">Descripción *</label>
-                <textarea id="tareaDescripcion" class="textarea" required placeholder="Ej: Llamar para seguimiento..."></textarea>
-              </div>
+              <div class="mb-4"><label class="label">Cliente</label><select id="tareaCliente" class="select"><option value="">Sin cliente asociado</option></select></div>
+              <div class="mb-4"><label class="label">Descripción *</label><textarea id="tareaDescripcion" class="textarea" required></textarea></div>
               <div class="grid grid-2">
-                <div class="mb-4">
-                  <label class="label">Fecha *</label>
-                  <input type="date" id="tareaFecha" class="input" required />
-                </div>
-                <div class="mb-4">
-                  <label class="label">Tipo</label>
-                  <select id="tareaTipo" class="select">
-                    <option value="seguimiento">Seguimiento</option>
-                    <option value="llamada">Llamada</option>
-                    <option value="reunion">Reunión</option>
-                    <option value="email">Email</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
+                <div class="mb-4"><label class="label">Fecha *</label><input type="date" id="tareaFecha" class="input" required /></div>
+                <div class="mb-4"><label class="label">Tipo</label><select id="tareaTipo" class="select"><option value="seguimiento">Seguimiento</option><option value="llamada">Llamada</option><option value="reunion">Reunión</option><option value="email">Email</option><option value="otro">Otro</option></select></div>
               </div>
-              <div class="mb-4">
-                <label class="label">Programar en (días) - opcional</label>
-                <input type="number" id="tareaPlazoDias" class="input" min="0" placeholder="Ej: 2" />
-                <p style="font-size:0.75rem; color:#6b7280; margin-top:0.25rem;">Si se indica, reemplaza la fecha seleccionada.</p>
-              </div>
+              <div class="mb-4"><label class="label">Programar en (días) - opcional</label><input type="number" id="tareaPlazoDias" class="input" min="0" /></div>
             </div>
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalTarea()" class="btn btn-gray">Cancelar</button>
@@ -1575,31 +1418,21 @@ class VersumCRM {
         </div>
       </div>
 
-      <!-- Modal Plazos (CORRECCIÓN: ahora existe en el DOM) -->
+      <!-- Modal Plazos -->
       <div id="modalPlazosTareas" class="modal">
         <div class="modal-content" style="max-width: 400px;">
           <div class="modal-header">
-            <h2 class="text-xl font-bold">⚙️ Configurar Plazos de Seguimiento</h2>
+            <h2 class="text-xl font-bold">Configurar Plazos</h2>
             <button onclick="app.closeModalPlazos()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;">×</button>
           </div>
           <div class="modal-body">
-            <p class="text-gray-600 mb-4" style="font-size:0.875rem;">Días que se esperan para crear la siguiente tarea automática según la fase del cliente.</p>
-            <div class="mb-4">
-              <label class="label">Fase Contacto (días)</label>
-              <input type="number" id="plazoContacto" class="input" min="1" value="2" />
-            </div>
-            <div class="mb-4">
-              <label class="label">Fase Muestras (días)</label>
-              <input type="number" id="plazoMuestras" class="input" min="1" value="7" />
-            </div>
-            <div class="mb-4">
-              <label class="label">Fase Cliente Activo (días)</label>
-              <input type="number" id="plazoCliente" class="input" min="1" value="30" />
-            </div>
+            <div class="mb-4"><label class="label">Contacto (días)</label><input type="number" id="plazoContacto" class="input" min="1" /></div>
+            <div class="mb-4"><label class="label">Muestras (días)</label><input type="number" id="plazoMuestras" class="input" min="1" /></div>
+            <div class="mb-4"><label class="label">Cliente (días)</label><input type="number" id="plazoCliente" class="input" min="1" /></div>
           </div>
           <div class="modal-footer">
-            <button type="button" onclick="app.closeModalPlazos()" class="btn btn-gray">Cancelar</button>
-            <button type="button" onclick="app.savePlazosConfig()" class="btn btn-gold">Guardar Plazos</button>
+            <button onclick="app.closeModalPlazos()" class="btn btn-gray">Cancelar</button>
+            <button onclick="app.savePlazosConfig()" class="btn btn-gold">Guardar Plazos</button>
           </div>
         </div>
       </div>
@@ -1608,53 +1441,33 @@ class VersumCRM {
 
   async loadTareas(filtro = 'pendientes') {
     try {
-      let query = supabaseClient
-        .from('tareas')
-        .select('*, cliente:clientes(nombre, empresa), comercial:usuarios!tareas_comercial_id_fkey(nombre)')
-        .order('fecha', { ascending: true });
-
-      if (this.currentUser.rol === 'comercial') {
-        query = query.eq('comercial_id', this.currentUser.id);
-      }
-
+      let query = supabaseClient.from('tareas').select('*, cliente:clientes(nombre, empresa), comercial:usuarios!tareas_comercial_id_fkey(nombre)').order('fecha', { ascending: true });
+      if (this.currentUser.rol === 'comercial') query = query.eq('comercial_id', this.currentUser.id);
       const { data: tareas, error } = await query;
       if (error) throw error;
-
       let tareasFiltradas = tareas || [];
       const hoy = new Date().toISOString().split('T')[0];
-      const semanaFin = new Date();
-      semanaFin.setDate(semanaFin.getDate() + 7);
+      const semanaFin = new Date(); semanaFin.setDate(semanaFin.getDate() + 7);
       const semanaFinStr = semanaFin.toISOString().split('T')[0];
-
       switch(filtro) {
         case 'pendientes': tareasFiltradas = tareasFiltradas.filter(t => !t.completada && t.fecha <= hoy); break;
         case 'hoy': tareasFiltradas = tareasFiltradas.filter(t => t.fecha === hoy); break;
         case 'semana': tareasFiltradas = tareasFiltradas.filter(t => !t.completada && t.fecha >= hoy && t.fecha <= semanaFinStr); break;
         case 'completadas': tareasFiltradas = tareasFiltradas.filter(t => t.completada); break;
       }
-
-      const pendientes = tareas.filter(t => !t.completada && t.fecha <= hoy).length;
-      const completadas = tareas.filter(t => t.completada).length;
-      document.getElementById('countPendientes').textContent = pendientes;
-      document.getElementById('countCompletadas').textContent = completadas;
-
+      document.getElementById('countPendientes').textContent = tareas.filter(t => !t.completada && t.fecha <= hoy).length;
+      document.getElementById('countCompletadas').textContent = tareas.filter(t => t.completada).length;
       document.querySelectorAll('[id^="filtro-"]').forEach(btn => { btn.classList.remove('btn-blue'); btn.classList.add('btn-gray'); btn.style.background = ''; btn.style.color = ''; });
       const btnActivo = document.getElementById(`filtro-${filtro}`);
       if (btnActivo) { btnActivo.classList.remove('btn-gray'); btnActivo.classList.add('btn-blue'); }
-
       const container = document.getElementById('tareasList');
-      if (tareasFiltradas.length === 0) {
-        container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600 mb-4">No hay tareas en esta categoría</p><button onclick="app.openModalTarea()" class="btn btn-gold">Crear Nueva Tarea</button></div>`;
-        return;
-      }
-
+      if (!tareasFiltradas.length) { container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600 mb-4">No hay tareas</p><button onclick="app.openModalTarea()" class="btn btn-gold">Crear Nueva Tarea</button></div>`; return; }
       container.innerHTML = tareasFiltradas.map(t => {
         const fechaTarea = new Date(t.fecha + 'T00:00:00');
         const hoyDate = new Date(hoy + 'T00:00:00');
         const isPendiente = !t.completada && fechaTarea <= hoyDate;
         const isFutura = !t.completada && fechaTarea > hoyDate;
         const esHoy = t.fecha === hoy;
-
         return `
           <div class="card" style="border-left: 4px solid ${t.completada ? '#d1d5db' : isPendiente ? '#ef4444' : '#3b82f6'}; ${t.completada ? 'opacity: 0.7;' : ''}">
             <div class="flex" style="gap: 1rem;">
@@ -1668,20 +1481,15 @@ class VersumCRM {
                   ${isFutura ? '<span class="badge badge-blue">📆 Programada</span>' : ''}
                   ${t.completada ? '<span class="badge badge-green">✓ Completada</span>' : ''}
                   <span class="badge" style="background: #f3f4f6; color: #6b7280;">${this.getTipoTareaLabel(t.tipo)}</span>
-                  ${t.plazo_dias ? `<span class="badge" style="background: #fff7ed; color: #92400e;">⏱️ +${t.plazo_dias}d</span>` : ''}
                   ${this.currentUser.rol !== 'comercial' && t.comercial ? `<span class="badge badge-blue">👤 ${t.comercial.nombre}</span>` : ''}
                 </div>
               </div>
-              <button onclick="app.deleteTarea('${t.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem; color: #6b7280; align-self: flex-start;" title="Eliminar">🗑️</button>
+              <button onclick="app.deleteTarea('${t.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem; color: #6b7280; align-self: flex-start;">🗑️</button>
             </div>
           </div>
         `;
       }).join('');
-
-    } catch (err) {
-      console.error('Error cargando tareas:', err);
-      document.getElementById('tareasList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando tareas</p><button onclick="app.loadTareas('pendientes')" class="btn btn-blue btn-sm mt-2">Reintentar</button></div>`;
-    }
+    } catch (err) { console.error('Error cargando tareas:', err); document.getElementById('tareasList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando tareas</p></div>`; }
   }
 
   filtrarTareas(filtro) { this.loadTareas(filtro); }
@@ -1690,11 +1498,8 @@ class VersumCRM {
     const f = new Date(fecha + 'T00:00:00');
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     const diff = Math.floor((f - hoy) / (1000 * 60 * 60 * 24));
-    if (diff === 0) return 'Hoy';
-    if (diff === 1) return 'Mañana';
-    if (diff === -1) return 'Ayer';
-    if (diff < -1) return `Hace ${Math.abs(diff)} días`;
-    if (diff > 1) return `En ${diff} días`;
+    if (diff === 0) return 'Hoy'; if (diff === 1) return 'Mañana'; if (diff === -1) return 'Ayer';
+    if (diff < -1) return `Hace ${Math.abs(diff)} días`; if (diff > 1) return `En ${diff} días`;
     return f.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   }
 
@@ -1704,23 +1509,18 @@ class VersumCRM {
   }
 
   async openModalTarea() {
-    const modal = document.getElementById('modalTarea');
     try {
       let query = supabaseClient.from('clientes').select('id, nombre, empresa').order('nombre', { ascending: true });
-      if (this.currentUser.rol === 'comercial') { query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`); }
+      if (this.currentUser.rol === 'comercial') query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
       const { data: clientes } = await query;
-      const selectCliente = document.getElementById('tareaCliente');
-      selectCliente.innerHTML = '<option value="">Sin cliente asociado</option>' +
+      document.getElementById('tareaCliente').innerHTML = '<option value="">Sin cliente asociado</option>' +
         (clientes || []).map(c => `<option value="${c.id}">${c.nombre}${c.empresa ? ' - ' + c.empresa : ''}</option>`).join('');
       document.getElementById('tareaFecha').value = new Date().toISOString().split('T')[0];
       document.getElementById('tareaPlazoDias').value = '';
       document.getElementById('tareaDescripcion').value = '';
       document.getElementById('tareaTipo').value = 'seguimiento';
-      modal.classList.add('active');
-    } catch (err) {
-      console.error('Error abriendo modal tarea:', err);
-      showNotification('❌ Error al cargar datos');
-    }
+      document.getElementById('modalTarea').classList.add('active');
+    } catch (err) { console.error('Error abriendo modal tarea:', err); showNotification('❌ Error al cargar datos'); }
   }
 
   closeModalTarea() { document.getElementById('modalTarea').classList.remove('active'); }
@@ -1730,64 +1530,29 @@ class VersumCRM {
     let fechaSeleccionada = document.getElementById('tareaFecha').value;
     const plazoVal = document.getElementById('tareaPlazoDias').value;
     let plazoUsado = null;
-
     if (plazoVal !== '' && !isNaN(parseInt(plazoVal, 10))) {
-      const plazo = parseInt(plazoVal, 10);
-      plazoUsado = plazo;
-      const f = new Date(); f.setDate(f.getDate() + plazo);
+      plazoUsado = parseInt(plazoVal, 10);
+      const f = new Date(); f.setDate(f.getDate() + plazoUsado);
       fechaSeleccionada = f.toISOString().split('T')[0];
-    } else {
-      const clienteId = document.getElementById('tareaCliente').value || null;
-      if (clienteId) {
-        try {
-          const { data: cliente } = await supabaseClient.from('clientes').select('fase').eq('id', clienteId).single();
-          if (cliente && cliente.fase) {
-            const plazos = await this.loadPlazosConfig();
-            const diasPorFase = plazos[cliente.fase];
-            if (diasPorFase !== undefined && diasPorFase !== null) {
-              plazoUsado = parseInt(diasPorFase, 10);
-              const f = new Date(); f.setDate(f.getDate() + plazoUsado);
-              fechaSeleccionada = f.toISOString().split('T')[0];
-            }
-          }
-        } catch (err) { console.warn('No se pudo obtener fase del cliente:', err); }
-      }
     }
-
-    const tareaData = {
-      cliente_id: document.getElementById('tareaCliente').value || null,
-      comercial_id: this.currentUser.id,
-      descripcion: document.getElementById('tareaDescripcion').value,
-      fecha: fechaSeleccionada,
-      tipo: document.getElementById('tareaTipo').value,
-      plazo_dias: plazoUsado,
-      completada: false
-    };
-
+    const tareaData = { cliente_id: document.getElementById('tareaCliente').value || null, comercial_id: this.currentUser.id, descripcion: document.getElementById('tareaDescripcion').value, fecha: fechaSeleccionada, tipo: document.getElementById('tareaTipo').value, plazo_dias: plazoUsado, completada: false };
     try {
       const { error } = await supabaseClient.from('tareas').insert([tareaData]);
       if (error) throw error;
       showNotification('✅ Tarea creada correctamente');
       this.closeModalTarea();
       this.loadTareas('pendientes');
-    } catch (err) {
-      console.error('Error creando tarea:', err);
-      showNotification('❌ Error al crear tarea');
-    }
+    } catch (err) { console.error('Error creando tarea:', err); showNotification('❌ Error al crear tarea'); }
   }
 
   async openModalPlazos() {
-    const modal = document.getElementById('modalPlazosTareas');
     try {
       const plazos = await this.loadPlazosConfig();
       document.getElementById('plazoContacto').value = plazos.contacto;
       document.getElementById('plazoMuestras').value = plazos.muestras;
       document.getElementById('plazoCliente').value = plazos.cliente;
-      modal.classList.add('active');
-    } catch (err) {
-      console.error('Error abriendo modal plazos:', err);
-      showNotification('❌ Error al cargar plazos');
-    }
+      document.getElementById('modalPlazosTareas').classList.add('active');
+    } catch (err) { console.error('Error abriendo modal plazos:', err); }
   }
 
   closeModalPlazos() { document.getElementById('modalPlazosTareas').classList.remove('active'); }
@@ -1796,12 +1561,9 @@ class VersumCRM {
     const defaults = { contacto: 2, muestras: 7, cliente: 30 };
     try {
       const { data, error } = await supabaseClient.from('tareas_config').select('contacto_dias, muestras_dias, cliente_dias').single();
-      if (error || !data) { console.warn('No se pudo cargar tareas_config, usando valores por defecto.', error); return defaults; }
+      if (error || !data) return defaults;
       return { contacto: data.contacto_dias ?? defaults.contacto, muestras: data.muestras_dias ?? defaults.muestras, cliente: data.cliente_dias ?? defaults.cliente };
-    } catch (err) {
-      console.warn('Error leyendo configuración de plazos:', err);
-      return defaults;
-    }
+    } catch (err) { return defaults; }
   }
 
   async savePlazosConfig() {
@@ -1811,12 +1573,8 @@ class VersumCRM {
     try {
       const { error } = await supabaseClient.from('tareas_config').upsert([{ id: 1, contacto_dias: contacto, muestras_dias: muestras, cliente_dias: cliente }], { onConflict: 'id' });
       if (error) throw error;
-      showNotification('✅ Plazos guardados correctamente');
-      this.closeModalPlazos();
-    } catch (err) {
-      console.error('Error guardando plazos:', err);
-      showNotification('⚠️ No se pudo guardar. Puede que la tabla tareas_config no exista aún.');
-    }
+      showNotification('✅ Plazos guardados'); this.closeModalPlazos();
+    } catch (err) { console.error('Error guardando plazos:', err); showNotification('❌ Error al guardar plazos'); }
   }
 
   async toggleTarea(id) {
@@ -1828,10 +1586,7 @@ class VersumCRM {
       showNotification(tarea.completada ? '📋 Tarea marcada como pendiente' : '✅ Tarea completada');
       const filtroActual = document.querySelector('[id^="filtro-"].btn-blue')?.id.replace('filtro-', '') || 'pendientes';
       this.loadTareas(filtroActual);
-    } catch (err) {
-      console.error('Error actualizando tarea:', err);
-      showNotification('❌ Error al actualizar tarea');
-    }
+    } catch (err) { console.error('Error actualizando tarea:', err); showNotification('❌ Error al actualizar tarea'); }
   }
 
   async deleteTarea(id) {
@@ -1842,16 +1597,12 @@ class VersumCRM {
       showNotification('✅ Tarea eliminada');
       const filtroActual = document.querySelector('[id^="filtro-"].btn-blue')?.id.replace('filtro-', '') || 'pendientes';
       this.loadTareas(filtroActual);
-    } catch (err) {
-      console.error('Error eliminando tarea:', err);
-      showNotification('❌ Error al eliminar tarea');
-    }
+    } catch (err) { console.error('Error eliminando tarea:', err); showNotification('❌ Error al eliminar tarea'); }
   }
 
   // ============================================
   // FINANZAS
   // ============================================
-
   renderFinanzasView() {
     return `
       <div>
@@ -1859,29 +1610,12 @@ class VersumCRM {
           <h2 class="text-2xl font-bold">Control Financiero</h2>
           <button onclick="app.openModalFinanza()" class="btn btn-gold">+ Registrar Movimiento</button>
         </div>
-
         <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
-            <p style="opacity: 0.9; font-size: 0.875rem;">Total Ingresos</p>
-            <p class="text-3xl font-bold mt-2" id="totalIngresos">€0.00</p>
-          </div>
-          <div class="card" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white;">
-            <p style="opacity: 0.9; font-size: 0.875rem;">Total Gastos</p>
-            <p class="text-3xl font-bold mt-2" id="totalGastos">€0.00</p>
-          </div>
-          <div class="card" style="background: linear-gradient(135deg, #D4A574, #C8A882); color: white;">
-            <p style="opacity: 0.9; font-size: 0.875rem;">Balance Neto</p>
-            <p class="text-3xl font-bold mt-2" id="balanceNeto">€0.00</p>
-          </div>
+          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Total Ingresos</p><p class="text-3xl font-bold mt-2" id="totalIngresos">€0.00</p></div>
+          <div class="card" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Total Gastos</p><p class="text-3xl font-bold mt-2" id="totalGastos">€0.00</p></div>
+          <div class="card" style="background: linear-gradient(135deg, #D4A574, #C8A882); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Balance Neto</p><p class="text-3xl font-bold mt-2" id="balanceNeto">€0.00</p></div>
         </div>
-
-        ${this.currentUser.rol !== 'comercial' ? `
-          <div class="card mb-4">
-            <h3 class="text-xl font-bold mb-4">Comisiones de Comerciales</h3>
-            <div id="comisionesList"><p class="text-center text-gray-600">Cargando comisiones...</p></div>
-          </div>
-        ` : ''}
-
+        ${this.currentUser.rol !== 'comercial' ? `<div class="card mb-4"><h3 class="text-xl font-bold mb-4">Comisiones de Comerciales</h3><div id="comisionesList"><p class="text-center text-gray-600">Cargando comisiones...</p></div></div>` : ''}
         <div class="card mb-4">
           <div class="flex gap-2" style="flex-wrap: wrap;">
             <button onclick="app.filtrarFinanzas('todas')" class="btn btn-sm btn-blue" id="filtro-fin-todas">Todas</button>
@@ -1890,13 +1624,9 @@ class VersumCRM {
             <button onclick="app.filtrarFinanzas('mes')" class="btn btn-sm btn-gray" id="filtro-fin-mes">Este Mes</button>
           </div>
         </div>
-
-        <div class="card">
-          <h3 class="text-xl font-bold mb-4">Movimientos Recientes</h3>
-          <div id="finanzasList"><p class="text-center text-gray-600">Cargando movimientos...</p></div>
-        </div>
+        <div class="card"><h3 class="text-xl font-bold mb-4">Movimientos Recientes</h3><div id="finanzasList"><p class="text-center text-gray-600">Cargando movimientos...</p></div></div>
       </div>
-
+      <!-- Modal Finanza -->
       <div id="modalFinanza" class="modal">
         <div class="modal-content">
           <div class="modal-header">
@@ -1905,35 +1635,10 @@ class VersumCRM {
           </div>
           <form onsubmit="app.handleFinanzaSubmit(event)">
             <div class="modal-body">
-              <div class="mb-4">
-                <label class="label">Tipo *</label>
-                <select id="finanzaTipo" class="select" required>
-                  <option value="gasto">Gasto</option>
-                  <option value="ingreso">Ingreso</option>
-                </select>
-              </div>
-              <div class="mb-4">
-                <label class="label">Concepto *</label>
-                <input type="text" id="finanzaConcepto" class="input" required placeholder="Ej: Compra materias primas..." />
-              </div>
-              <div class="mb-4">
-                <label class="label">Monto (€) *</label>
-                <input type="number" id="finanzaMonto" class="input" required min="0" step="0.01" />
-              </div>
-              <div class="mb-4">
-                <label class="label">Categoría</label>
-                <select id="finanzaCategoria" class="select">
-                  <option value="">Seleccionar...</option>
-                  <option value="ventas">Ventas</option>
-                  <option value="genero">Género</option>
-                  <option value="marketing">Marketing</option>
-                  <option value="transporte">Transporte</option>
-                  <option value="alquiler">Alquiler</option>
-                  <option value="servicios">Servicios</option>
-                  <option value="nominas">Nóminas</option>
-                  <option value="otros">Otros</option>
-                </select>
-              </div>
+              <div class="mb-4"><label class="label">Tipo *</label><select id="finanzaTipo" class="select" required><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
+              <div class="mb-4"><label class="label">Concepto *</label><input type="text" id="finanzaConcepto" class="input" required /></div>
+              <div class="mb-4"><label class="label">Monto (€) *</label><input type="number" id="finanzaMonto" class="input" required min="0" step="0.01" /></div>
+              <div class="mb-4"><label class="label">Categoría</label><select id="finanzaCategoria" class="select"><option value="">Seleccionar...</option><option value="ventas">Ventas</option><option value="genero">Género</option><option value="marketing">Marketing</option><option value="transporte">Transporte</option><option value="alquiler">Alquiler</option><option value="servicios">Servicios</option><option value="nominas">Nóminas</option><option value="otros">Otros</option></select></div>
             </div>
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalFinanza()" class="btn btn-gray">Cancelar</button>
@@ -1948,36 +1653,27 @@ class VersumCRM {
   async loadFinanzas(filtro = 'todas') {
     try {
       let query = supabaseClient.from('finanzas').select('*, comercial:usuarios!finanzas_comercial_id_fkey(nombre)').order('fecha', { ascending: false });
-      if (this.currentUser.rol === 'comercial') { query = query.eq('comercial_id', this.currentUser.id); }
+      if (this.currentUser.rol === 'comercial') query = query.eq('comercial_id', this.currentUser.id);
       const { data: finanzas, error } = await query;
       if (error) throw error;
-
       let finanzasFiltradas = finanzas || [];
       const hoy = new Date();
       const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
-
       switch(filtro) {
         case 'ingresos': finanzasFiltradas = finanzasFiltradas.filter(f => f.tipo === 'ingreso'); break;
         case 'gastos': finanzasFiltradas = finanzasFiltradas.filter(f => f.tipo === 'gasto'); break;
         case 'mes': finanzasFiltradas = finanzasFiltradas.filter(f => f.fecha >= primerDiaMes); break;
       }
-
       const ingresos = finanzas.filter(f => f.tipo === 'ingreso').reduce((sum, f) => sum + parseFloat(f.monto || 0), 0);
       const gastos = finanzas.filter(f => f.tipo === 'gasto').reduce((sum, f) => sum + parseFloat(f.monto || 0), 0);
       document.getElementById('totalIngresos').textContent = `€${ingresos.toFixed(2)}`;
       document.getElementById('totalGastos').textContent = `€${gastos.toFixed(2)}`;
       document.getElementById('balanceNeto').textContent = `€${(ingresos - gastos).toFixed(2)}`;
-
       document.querySelectorAll('[id^="filtro-fin-"]').forEach(btn => { btn.classList.remove('btn-blue'); btn.classList.add('btn-gray'); });
       const btnActivo = document.getElementById(`filtro-fin-${filtro}`);
       if (btnActivo) { btnActivo.classList.remove('btn-gray'); btnActivo.classList.add('btn-blue'); }
-
       const container = document.getElementById('finanzasList');
-      if (finanzasFiltradas.length === 0) {
-        container.innerHTML = `<p class="text-center text-gray-600 py-4">No hay movimientos en esta categoría</p>`;
-        return;
-      }
-
+      if (!finanzasFiltradas.length) { container.innerHTML = `<p class="text-center text-gray-600 py-4">No hay movimientos</p>`; return; }
       container.innerHTML = `
         <div style="max-height: 500px; overflow-y: auto;">
           ${finanzasFiltradas.map(f => `
@@ -2000,23 +1696,14 @@ class VersumCRM {
           `).join('')}
         </div>
       `;
-
-      if (this.currentUser.rol !== 'comercial') { this.loadComisiones(); }
-
-    } catch (err) {
-      console.error('Error cargando finanzas:', err);
-      document.getElementById('finanzasList').innerHTML = `<p class="text-center" style="color: #ef4444;">Error cargando movimientos</p>`;
-    }
+      if (this.currentUser.rol !== 'comercial') this.loadComisiones();
+    } catch (err) { console.error('Error cargando finanzas:', err); document.getElementById('finanzasList').innerHTML = `<p class="text-center" style="color: #ef4444;">Error cargando movimientos</p>`; }
   }
 
   async loadComisiones() {
     try {
       const { data: comConf } = await supabaseClient.from('comisiones_comerciales').select('*').eq('activo', true);
-      if (!comConf || comConf.length === 0) {
-        document.getElementById('comisionesList').innerHTML = `<p class="text-center text-gray-600">No hay comisiones configuradas</p>`;
-        return;
-      }
-
+      if (!comConf || !comConf.length) { document.getElementById('comisionesList').innerHTML = `<p class="text-center text-gray-600">No hay comisiones configuradas</p>`; return; }
       const comisiones = await Promise.all(comConf.map(async (c) => {
         const { data: user } = await supabaseClient.from('usuarios').select('id, nombre').eq('id', c.comercial_id).single();
         const { data: pedidos } = await supabaseClient.from('pedidos').select('total').eq('comercial_id', c.comercial_id).eq('estado_facturacion', 'factura cobrada');
@@ -2024,31 +1711,13 @@ class VersumCRM {
         const comision = totalVentas * ((c.porcentaje || 0) / 100);
         return { nombre: user?.nombre || 'N/A', porcentaje: c.porcentaje || 0, ventas: totalVentas, comision };
       }));
-
       document.getElementById('comisionesList').innerHTML = `
         <div style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse;">
-            <thead style="background: #f9fafb;">
-              <tr>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem;">Comercial</th>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem;">% Comisión</th>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem;">Ventas Totales</th>
-                <th style="padding: 0.75rem; text-align: left; font-size: 0.875rem;">Comisión</th>
-              </tr>
-            </thead>
+            <thead style="background: #f9fafb;"><tr><th style="padding:0.75rem; text-align:left;">Comercial</th><th style="padding:0.75rem; text-align:left;">%</th><th style="padding:0.75rem; text-align:left;">Ventas</th><th style="padding:0.75rem; text-align:left;">Comisión</th></tr></thead>
             <tbody style="border-top: 1px solid #e5e7eb;">
-              ${comisiones.map(c => `
-                <tr style="border-bottom: 1px solid #e5e7eb;">
-                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 600;">${c.nombre}</td>
-                  <td style="padding: 0.75rem; font-size: 0.875rem;">${c.porcentaje}%</td>
-                  <td style="padding: 0.75rem; font-size: 0.875rem;">€${c.ventas.toFixed(2)}</td>
-                  <td style="padding: 0.75rem; font-size: 0.875rem; font-weight: 700; color: #D4A574;">€${c.comision.toFixed(2)}</td>
-                </tr>
-              `).join('')}
-              <tr style="background: #fef3c7; font-weight: 700;">
-                <td colspan="3" style="padding: 0.75rem; font-size: 0.875rem; text-align: right;">TOTAL COMISIONES:</td>
-                <td style="padding: 0.75rem; font-size: 0.875rem; color: #92400e;">€${comisiones.reduce((sum, c) => sum + c.comision, 0).toFixed(2)}</td>
-              </tr>
+              ${comisiones.map(c => `<tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding:0.75rem; font-weight:600;">${c.nombre}</td><td style="padding:0.75rem;">${c.porcentaje}%</td><td style="padding:0.75rem;">€${c.ventas.toFixed(2)}</td><td style="padding:0.75rem; font-weight:700; color:#D4A574;">€${c.comision.toFixed(2)}</td></tr>`).join('')}
+              <tr style="background: #fef3c7; font-weight: 700;"><td colspan="3" style="padding:0.75rem; text-align:right;">TOTAL:</td><td style="padding:0.75rem; color:#92400e;">€${comisiones.reduce((sum, c) => sum + c.comision, 0).toFixed(2)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -2075,24 +1744,14 @@ class VersumCRM {
 
   async handleFinanzaSubmit(e) {
     e.preventDefault();
-    const finanzaData = {
-      tipo: document.getElementById('finanzaTipo').value,
-      concepto: document.getElementById('finanzaConcepto').value,
-      monto: parseFloat(document.getElementById('finanzaMonto').value),
-      categoria: document.getElementById('finanzaCategoria').value || null,
-      comercial_id: this.currentUser.id,
-      fecha: new Date().toISOString()
-    };
+    const finanzaData = { tipo: document.getElementById('finanzaTipo').value, concepto: document.getElementById('finanzaConcepto').value, monto: parseFloat(document.getElementById('finanzaMonto').value), categoria: document.getElementById('finanzaCategoria').value || null, comercial_id: this.currentUser.id, fecha: new Date().toISOString() };
     try {
       const { error } = await supabaseClient.from('finanzas').insert([finanzaData]);
       if (error) throw error;
-      showNotification(`✅ ${finanzaData.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado correctamente`);
+      showNotification(`✅ ${finanzaData.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado`);
       this.closeModalFinanza();
       this.loadFinanzas('todas');
-    } catch (err) {
-      console.error('Error registrando movimiento:', err);
-      showNotification('❌ Error al registrar movimiento');
-    }
+    } catch (err) { console.error('Error registrando movimiento:', err); showNotification('❌ Error al registrar movimiento'); }
   }
 
   async deleteFinanza(id) {
@@ -2103,58 +1762,118 @@ class VersumCRM {
       showNotification('✅ Movimiento eliminado');
       const filtroActual = document.querySelector('[id^="filtro-fin-"].btn-blue')?.id.replace('filtro-fin-', '') || 'todas';
       this.loadFinanzas(filtroActual);
-    } catch (err) {
-      console.error('Error eliminando movimiento:', err);
-      showNotification('❌ Error al eliminar movimiento');
-    }
+    } catch (err) { console.error('Error eliminando movimiento:', err); showNotification('❌ Error al eliminar movimiento'); }
   }
 
   // ============================================
-  // DASHBOARD
+  // DASHBOARD CON SELECTOR DE PERIODO
   // ============================================
-
   renderDashboardView() {
     return `
       <div>
-        <div class="flex justify-between mb-4">
+        <div class="flex justify-between mb-4" style="flex-wrap:wrap; gap:0.5rem;">
           <h2 class="text-2xl font-bold">Dashboard</h2>
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <select id="dashPeriodoTipo" class="select" style="width:130px;" onchange="app.actualizarInputsPeriodo()">
+              <option value="meses">Por meses</option>
+              <option value="dias">Por días</option>
+            </select>
+            <div id="dashPeriodoMeses" style="display:flex; gap:0.5rem; align-items:center;">
+              <label style="font-size:0.875rem; color:#6b7280;">Últimos</label>
+              <input type="number" id="dashNumMeses" class="input" style="width:70px;" value="6" min="1" max="24" />
+              <label style="font-size:0.875rem; color:#6b7280;">meses</label>
+            </div>
+            <div id="dashPeriodoDias" style="display:none; gap:0.5rem; align-items:center;">
+              <input type="date" id="dashDesde" class="input" style="width:150px;" />
+              <span style="font-size:0.875rem; color:#6b7280;">hasta</span>
+              <input type="date" id="dashHasta" class="input" style="width:150px;" />
+            </div>
+            <button onclick="app.loadDashboard()" class="btn btn-gold btn-sm">Actualizar</button>
+          </div>
         </div>
-        <div class="grid grid-2 mb-4">
-          <div class="card"><p style="opacity:0.8;">Ventas (últimos 6 meses)</p><p class="text-2xl font-bold mt-2" id="kpiVentasTotales">€0</p></div>
+
+        <div class="grid grid-2 mb-4" id="dashKpis">
+          <div class="card"><p style="opacity:0.8;">Ventas en periodo</p><p class="text-2xl font-bold mt-2" id="kpiVentasTotales">€0</p></div>
           <div class="card"><p style="opacity:0.8;">Pedidos Totales</p><p class="text-2xl font-bold mt-2" id="kpiPedidosTotales">0</p></div>
           <div class="card"><p style="opacity:0.8;">Pedidos Cobrados</p><p class="text-2xl font-bold mt-2" id="kpiPedidosCobrados">0</p></div>
           <div class="card"><p style="opacity:0.8;">Ticket Medio</p><p class="text-2xl font-bold mt-2" id="kpiAvgTicket">€0</p></div>
         </div>
+
         <div class="grid grid-2 mb-4">
-          <div class="card"><h3 class="font-bold mb-2">Ventas últimos 6 meses</h3><canvas id="chartVentas" height="150"></canvas></div>
-          <div class="card"><h3 class="font-bold mb-2">Pedidos últimos 6 meses</h3><canvas id="chartPedidos" height="150"></canvas></div>
+          <div class="card"><h3 class="font-bold mb-2">Ventas en periodo</h3><canvas id="chartVentas" height="150"></canvas></div>
+          <div class="card"><h3 class="font-bold mb-2">Pedidos en periodo</h3><canvas id="chartPedidos" height="150"></canvas></div>
         </div>
+
         <div class="card"><h3 class="font-bold mb-2">Top comerciales (ventas cobradas)</h3><div id="kpiTopComercialesList">Cargando...</div></div>
       </div>
     `;
   }
 
+  actualizarInputsPeriodo() {
+    const tipo = document.getElementById('dashPeriodoTipo').value;
+    const mesesDiv = document.getElementById('dashPeriodoMeses');
+    const diasDiv = document.getElementById('dashPeriodoDias');
+    if (tipo === 'meses') { mesesDiv.style.display = 'flex'; diasDiv.style.display = 'none'; }
+    else {
+      mesesDiv.style.display = 'none'; diasDiv.style.display = 'flex';
+      if (!document.getElementById('dashDesde').value) {
+        const hace30 = new Date(); hace30.setDate(hace30.getDate() - 30);
+        document.getElementById('dashDesde').value = hace30.toISOString().split('T')[0];
+        document.getElementById('dashHasta').value = new Date().toISOString().split('T')[0];
+      }
+    }
+  }
+
   async loadDashboard() {
     try {
+      const tipo = document.getElementById('dashPeriodoTipo')?.value || 'meses';
       const hoy = new Date();
-      const start = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1);
-      const { data: pedidos } = await supabaseClient.from('pedidos').select('fecha,total,estado_facturacion,comercial_id').gte('fecha', start.toISOString());
+      let startISO, endISO, labels, buckets;
 
-      const months = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
-        months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, total: 0, count: 0, label: d.toLocaleString('es-ES', { month: 'short', year: 'numeric' }) });
+      if (tipo === 'dias') {
+        const desde = document.getElementById('dashDesde')?.value;
+        const hasta = document.getElementById('dashHasta')?.value;
+        if (!desde || !hasta) { showNotification('❌ Selecciona rango de fechas'); return; }
+        startISO = new Date(desde).toISOString();
+        endISO = new Date(new Date(hasta).setHours(23,59,59,999)).toISOString();
+        // Generar buckets diarios
+        buckets = [];
+        const d = new Date(desde);
+        const end = new Date(hasta);
+        while (d <= end) {
+          buckets.push({ key: d.toISOString().split('T')[0], label: d.toLocaleDateString('es-ES', { day:'numeric', month:'short' }), total: 0, count: 0 });
+          d.setDate(d.getDate() + 1);
+        }
+      } else {
+        const numMeses = parseInt(document.getElementById('dashNumMeses')?.value || '6', 10);
+        const start = new Date(hoy.getFullYear(), hoy.getMonth() - (numMeses - 1), 1);
+        startISO = start.toISOString();
+        endISO = hoy.toISOString();
+        buckets = [];
+        for (let i = numMeses - 1; i >= 0; i--) {
+          const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          buckets.push({ key, label: d.toLocaleString('es-ES', { month: 'short', year: 'numeric' }), total: 0, count: 0 });
+        }
       }
 
+      const { data: pedidos } = await supabaseClient.from('pedidos').select('fecha, total, estado_facturacion, comercial_id').gte('fecha', startISO).lte('fecha', endISO);
       let ventasTotales = 0, pedidosTotales = 0, pedidosCobrados = 0;
+
       (pedidos || []).forEach(p => {
         const d = new Date(p.fecha);
-        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        const m = months.find(m => m.key === key);
-        if (m) { m.total += parseFloat(p.total || 0); m.count += 1; }
+        let bucket;
+        if (tipo === 'dias') {
+          const key = d.toISOString().split('T')[0];
+          bucket = buckets.find(b => b.key === key);
+        } else {
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          bucket = buckets.find(b => b.key === key);
+        }
+        if (bucket) { bucket.total += parseFloat(p.total || 0); bucket.count += 1; }
         ventasTotales += parseFloat(p.total || 0);
-        pedidosTotales += 1;
-        if (p.estado_facturacion === 'factura cobrada') pedidosCobrados += 1;
+        pedidosTotales++;
+        if (p.estado_facturacion === 'factura cobrada') pedidosCobrados++;
       });
 
       document.getElementById('kpiVentasTotales').textContent = `€${ventasTotales.toFixed(2)}`;
@@ -2162,50 +1881,55 @@ class VersumCRM {
       document.getElementById('kpiPedidosCobrados').textContent = `${pedidosCobrados}`;
       document.getElementById('kpiAvgTicket').textContent = `€${(pedidosTotales ? ventasTotales / pedidosTotales : 0).toFixed(2)}`;
 
+      const ctxV = document.getElementById('chartVentas').getContext('2d');
       if (this.chartVentas) this.chartVentas.destroy();
-      this.chartVentas = new Chart(document.getElementById('chartVentas').getContext('2d'), {
-        type: 'line',
-        data: { labels: months.map(m => m.label), datasets: [{ label: 'Ventas', data: months.map(m => m.total.toFixed(2)), borderColor: '#D4A574', backgroundColor: 'rgba(212,165,116,0.1)', tension: 0.3 }] }
-      });
+      this.chartVentas = new Chart(ctxV, { type: 'line', data: { labels: buckets.map(b => b.label), datasets: [{ label: 'Ventas (€)', data: buckets.map(b => b.total.toFixed(2)), borderColor: '#D4A574', backgroundColor: 'rgba(212,165,116,0.1)', tension: 0.3 }] } });
 
+      const ctxP = document.getElementById('chartPedidos').getContext('2d');
       if (this.chartPedidos) this.chartPedidos.destroy();
-      this.chartPedidos = new Chart(document.getElementById('chartPedidos').getContext('2d'), {
-        type: 'line',
-        data: { labels: months.map(m => m.label), datasets: [{ label: 'Pedidos', data: months.map(m => m.count), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.3 }] }
-      });
+      this.chartPedidos = new Chart(ctxP, { type: 'line', data: { labels: buckets.map(b => b.label), datasets: [{ label: 'Pedidos', data: buckets.map(b => b.count), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.3 }] } });
 
       const { data: comerciales } = await supabaseClient.from('usuarios').select('id, nombre').eq('rol', 'comercial').eq('activo', true);
       const ventasPorComercial = await Promise.all((comerciales || []).map(async (u) => {
-        const { data: ventas } = await supabaseClient.from('pedidos').select('total').eq('comercial_id', u.id).eq('estado_facturacion', 'factura cobrada').gte('fecha', start.toISOString());
-        return { nombre: u.nombre, total: ventas ? ventas.reduce((s, v) => s + parseFloat(v.total || 0), 0) : 0 };
+        const { data: ventas } = await supabaseClient.from('pedidos').select('total').eq('comercial_id', u.id).eq('estado_facturacion', 'factura cobrada').gte('fecha', startISO).lte('fecha', endISO);
+        const total = ventas ? ventas.reduce((s, v) => s + parseFloat(v.total || 0), 0) : 0;
+        return { nombre: u.nombre, total };
       }));
-
       const top = ventasPorComercial.sort((a,b) => b.total - a.total).slice(0,5);
-      document.getElementById('kpiTopComercialesList').innerHTML = top.map(t => `<div style="display:flex; justify-content:space-between; padding:0.25rem 0;"><span>${t.nombre}</span><span style="font-weight:700;">€${t.total.toFixed(2)}</span></div>`).join('');
+      document.getElementById('kpiTopComercialesList').innerHTML = top.map(t => `<div style="display:flex; justify-content:space-between; padding:0.25rem 0;"><span>${t.nombre}</span><span style="font-weight:700;">€${t.total.toFixed(2)}</span></div>`).join('') || '<p class="text-gray-600">Sin datos</p>';
 
-    } catch (err) {
-      console.error('Error cargando dashboard:', err);
-      document.getElementById('kpiTopComercialesList').innerHTML = '<p class="text-center text-gray-600">Error cargando datos</p>';
-    }
+    } catch (err) { console.error('Error cargando dashboard:', err); document.getElementById('kpiTopComercialesList').innerHTML = '<p class="text-center text-gray-600">Error cargando datos</p>'; }
   }
 
   // ============================================
-  // FACTURACIÓN
+  // FACTURACIÓN CON FILTRO POR ESTADO
   // ============================================
-
   renderFacturacionView() {
     return `
       <div>
-        <div class="flex justify-between mb-4">
+        <div class="flex justify-between mb-4" style="flex-wrap:wrap; gap:0.5rem;">
           <h2 class="text-2xl font-bold">Facturación</h2>
-          <div>
-            <input type="date" id="factDesde" class="input" style="display:inline-block; width:160px; margin-right:0.5rem;" />
-            <input type="date" id="factHasta" class="input" style="display:inline-block; width:160px; margin-right:0.5rem;" />
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <input type="date" id="factDesde" class="input" style="width:150px;" />
+            <input type="date" id="factHasta" class="input" style="width:150px;" />
+            <select id="factEstadoFiltro" class="select" style="width:200px;">
+              <option value="">Todos los estados</option>
+              <option value="pendiente de emitir factura">Pendiente de emitir</option>
+              <option value="factura emitida">Factura emitida</option>
+              <option value="factura enviada">Factura enviada</option>
+              <option value="factura cobrada">Factura cobrada</option>
+            </select>
             <button onclick="app.loadFacturacion()" class="btn btn-sm btn-gray">Filtrar</button>
             <button onclick="app.exportFacturacionToExcel()" class="btn btn-sm btn-gold">Exportar Excel</button>
           </div>
         </div>
-        <div id="facturacionList"><div class="card text-center py-8"><p class="text-gray-600">Cargando facturación...</p></div></div>
+
+        <!-- Resumen por estado -->
+        <div class="grid grid-2 mb-4" id="facturacionResumen"></div>
+
+        <div id="facturacionList">
+          <div class="card text-center py-8"><p class="text-gray-600">Cargando facturación...</p></div>
+        </div>
       </div>
     `;
   }
@@ -2214,23 +1938,39 @@ class VersumCRM {
     try {
       const desde = document.getElementById('factDesde').value;
       const hasta = document.getElementById('factHasta').value;
+      const estadoFiltro = document.getElementById('factEstadoFiltro').value;
 
       let query = supabaseClient
         .from('pedidos')
         .select('id, fecha, total, descuento_total, estado_facturacion, cliente:clientes(id,nombre), comercial:usuarios!pedidos_comercial_id_fkey(nombre)')
-        .order('fecha', { ascending: false }).limit(500);
+        .order('fecha', { ascending: false })
+        .limit(500);
 
       if (desde) query = query.gte('fecha', new Date(desde).toISOString());
       if (hasta) query = query.lte('fecha', new Date(new Date(hasta).setHours(23,59,59,999)).toISOString());
+      if (estadoFiltro) query = query.eq('estado_facturacion', estadoFiltro);
 
       const { data: pedidos, error } = await query;
       if (error) throw error;
 
+      // Resumen por estado
+      const estadosConteo = {
+        'pendiente de emitir factura': { label: 'Pendiente de emitir', count: 0, total: 0, color: '#ef4444', bg: '#fef2f2' },
+        'factura emitida': { label: 'Emitida', count: 0, total: 0, color: '#f59e0b', bg: '#fef3c7' },
+        'factura enviada': { label: 'Enviada', count: 0, total: 0, color: '#3b82f6', bg: '#dbeafe' },
+        'factura cobrada': { label: 'Cobrada', count: 0, total: 0, color: '#10b981', bg: '#d1fae5' },
+      };
+      (pedidos || []).forEach(p => { const e = estadosConteo[p.estado_facturacion]; if (e) { e.count++; e.total += parseFloat(p.total || 0); } });
+      document.getElementById('facturacionResumen').innerHTML = Object.entries(estadosConteo).map(([key, e]) => `
+        <div class="card" style="border-left: 4px solid ${e.color}; background: ${e.bg}; cursor:pointer;" onclick="document.getElementById('factEstadoFiltro').value='${key}'; app.loadFacturacion();">
+          <p style="font-size:0.875rem; font-weight:600; color:${e.color};">${e.label}</p>
+          <p style="font-size:1.5rem; font-weight:700; margin-top:0.25rem;">${e.count} pedidos</p>
+          <p style="font-size:1rem; color:${e.color}; font-weight:600;">€${e.total.toFixed(2)}</p>
+        </div>
+      `).join('');
+
       const container = document.getElementById('facturacionList');
-      if (!pedidos || pedidos.length === 0) {
-        container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600">No hay pedidos</p></div>`;
-        return;
-      }
+      if (!pedidos || !pedidos.length) { container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600">No hay pedidos con este filtro</p></div>`; return; }
 
       container.innerHTML = `
         <div style="overflow-x:auto;">
@@ -2245,52 +1985,60 @@ class VersumCRM {
               </tr>
             </thead>
             <tbody>
-              ${pedidos.map(p => `
-                <tr style="border-top:1px solid #e5e7eb;">
-                  <td style="padding:0.75rem;">${new Date(p.fecha).toLocaleDateString()}</td>
-                  <td style="padding:0.75rem;">${p.cliente?.nombre || 'N/A'}</td>
-                  <td style="padding:0.75rem; text-align:right;">€${parseFloat(p.total || 0).toFixed(2)}</td>
-                  <td style="padding:0.75rem; text-align:right;">€${parseFloat(p.descuento_total || 0).toFixed(2)}</td>
-                  <td style="padding:0.75rem;">
-                    <select onchange="app.updatePedidoFacturacion('${p.id}', this.value)">
-                      <option value="pendiente de emitir factura" ${p.estado_facturacion === 'pendiente de emitir factura' ? 'selected' : ''}>Pendiente de emitir</option>
-                      <option value="factura emitida" ${p.estado_facturacion === 'factura emitida' ? 'selected' : ''}>Emitida</option>
-                      <option value="factura enviada" ${p.estado_facturacion === 'factura enviada' ? 'selected' : ''}>Enviada</option>
-                      <option value="factura cobrada" ${p.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Cobrada</option>
-                    </select>
-                  </td>
-                </tr>
-              `).join('')}
+              ${(pedidos || []).map(p => {
+                const estadoColors = {
+                  'pendiente de emitir factura': '#fee2e2',
+                  'factura emitida': '#fef3c7',
+                  'factura enviada': '#dbeafe',
+                  'factura cobrada': '#d1fae5'
+                };
+                const rowBg = estadoColors[p.estado_facturacion] || 'transparent';
+                return `
+                  <tr style="border-top:1px solid #e5e7eb; background:${rowBg}">
+                    <td style="padding:0.75rem;">${new Date(p.fecha).toLocaleDateString()}</td>
+                    <td style="padding:0.75rem; font-weight:600;">${p.cliente?.nombre || 'N/A'}</td>
+                    <td style="padding:0.75rem; text-align:right; font-weight:700;">€${parseFloat(p.total || 0).toFixed(2)}</td>
+                    <td style="padding:0.75rem; text-align:right;">€${parseFloat(p.descuento_total || 0).toFixed(2)}</td>
+                    <td style="padding:0.75rem;">
+                      <select onchange="app.updatePedidoFacturacion('${p.id}', this.value)" style="padding:0.4rem; border-radius:6px; border:1px solid #d1d5db;">
+                        <option value="pendiente de emitir factura" ${p.estado_facturacion === 'pendiente de emitir factura' ? 'selected' : ''}>Pendiente de emitir</option>
+                        <option value="factura emitida" ${p.estado_facturacion === 'factura emitida' ? 'selected' : ''}>Emitida</option>
+                        <option value="factura enviada" ${p.estado_facturacion === 'factura enviada' ? 'selected' : ''}>Enviada</option>
+                        <option value="factura cobrada" ${p.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Cobrada</option>
+                      </select>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
       `;
-    } catch (err) {
-      console.error('Error cargando facturación:', err);
-      document.getElementById('facturacionList').innerHTML = `<div class="card text-center py-8"><p style="color:#ef4444;">Error cargando datos</p></div>`;
-    }
+    } catch (err) { console.error('Error cargando facturación:', err); document.getElementById('facturacionList').innerHTML = `<div class="card text-center py-8"><p style="color:#ef4444;">Error cargando datos</p></div>`; }
   }
 
   async exportFacturacionToExcel() {
     try {
       const desde = document.getElementById('factDesde').value;
       const hasta = document.getElementById('factHasta').value;
+      const estadoFiltro = document.getElementById('factEstadoFiltro').value;
       let query = supabaseClient.from('pedidos').select('id, fecha, total, descuento_total, estado_facturacion, items_json, cliente:clientes(id,nombre), comercial:usuarios!pedidos_comercial_id_fkey(nombre)').order('fecha', { ascending: false }).limit(5000);
       if (desde) query = query.gte('fecha', new Date(desde).toISOString());
       if (hasta) query = query.lte('fecha', new Date(new Date(hasta).setHours(23,59,59,999)).toISOString());
+      if (estadoFiltro) query = query.eq('estado_facturacion', estadoFiltro);
       const { data: pedidos } = await query;
       const rows = (pedidos || []).map(p => ({ id: p.id, fecha: new Date(p.fecha).toLocaleDateString(), cliente: p.cliente?.nombre || '', total: parseFloat(p.total || 0), descuento_total: parseFloat(p.descuento_total || 0), estado_facturacion: p.estado_facturacion || '', comercial: p.comercial?.nombre || '', items: JSON.stringify(p.items_json || []) }));
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Facturacion');
       XLSX.writeFile(wb, `facturacion_${new Date().toISOString().slice(0,10)}.xlsx`);
-    } catch (err) { console.error('Error exportando facturación:', err); showNotification('❌ Error exportando facturación'); }
+    } catch (err) { console.error('Error exportando facturación:', err); showNotification('❌ Error exportando'); }
   }
 
   async exportClientesToExcel() {
     try {
       const { data: clientes } = await supabaseClient.from('clientes').select('*').order('nombre', { ascending: true }).limit(5000);
-      const rows = (clientes || []).map(c => ({ id: c.id, nombre: c.nombre, empresa: c.empresa || '', email: c.email || '', telefono: c.telefono || '', direccion: c.direccion || '', fase: c.fase || '', asignado_a: c.asignado_a || '', fecha_creacion: c.fecha_creacion || '' }));
+      const rows = (clientes || []).map(c => ({ id: c.id, nombre: c.nombre, empresa: c.empresa || '', email: c.email || '', telefono: c.telefono || '', direccion: c.direccion || '', localidad: c.localidad || '', fase: c.fase || '', asignado_a: c.asignado_a || '', fecha_creacion: c.fecha_creacion || '' }));
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
@@ -2312,7 +2060,6 @@ class VersumCRM {
   // ============================================
   // USUARIOS
   // ============================================
-
   renderUsuariosView() {
     return `
       <div>
@@ -2321,14 +2068,8 @@ class VersumCRM {
           <button onclick="app.openModalUsuario()" class="btn btn-gold">+ Nuevo Usuario</button>
         </div>
         <div class="grid grid-2 mb-4">
-          <div class="card" style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white;">
-            <p style="opacity: 0.9; font-size: 0.875rem;">Total Usuarios</p>
-            <p class="text-3xl font-bold mt-2" id="totalUsuarios">0</p>
-          </div>
-          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
-            <p style="opacity: 0.9; font-size: 0.875rem;">Usuarios Activos</p>
-            <p class="text-3xl font-bold mt-2" id="usuariosActivos">0</p>
-          </div>
+          <div class="card" style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Total Usuarios</p><p class="text-3xl font-bold mt-2" id="totalUsuarios">0</p></div>
+          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Usuarios Activos</p><p class="text-3xl font-bold mt-2" id="usuariosActivos">0</p></div>
         </div>
         <div id="usuariosList" class="grid"><div class="card text-center py-8"><p class="text-gray-600">Cargando usuarios...</p></div></div>
       </div>
@@ -2345,25 +2086,10 @@ class VersumCRM {
               <div class="mb-4"><label class="label">Email *</label><input type="email" id="usuarioEmail" class="input" required /></div>
               <div class="mb-4"><label class="label">Contraseña *</label><input type="text" id="usuarioPassword" class="input" required minlength="6" /></div>
               <div class="grid grid-2">
-                <div class="mb-4">
-                  <label class="label">Rol *</label>
-                  <select id="usuarioRol" class="select" required onchange="app.updateComisionField()">
-                    <option value="comercial">Comercial</option>
-                    <option value="admin">Administrador</option>
-                    ${this.currentUser.rol === 'ceo' ? '<option value="ceo">CEO</option>' : ''}
-                  </select>
-                </div>
-                <div class="mb-4" id="comisionField">
-                  <label class="label">Comisión (%)</label>
-                  <input type="number" id="usuarioComision" class="input" min="0" max="100" step="0.1" value="0" />
-                </div>
+                <div class="mb-4"><label class="label">Rol *</label><select id="usuarioRol" class="select" required onchange="app.updateComisionField()"><option value="comercial">Comercial</option><option value="admin">Administrador</option>${this.currentUser.rol === 'ceo' ? '<option value="ceo">CEO</option>' : ''}</select></div>
+                <div class="mb-4" id="comisionField"><label class="label">Comisión (%)</label><input type="number" id="usuarioComision" class="input" min="0" max="100" step="0.1" value="0" /></div>
               </div>
-              <div class="mb-4">
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <input type="checkbox" id="usuarioActivo" checked style="width: 1.25rem; height: 1.25rem;" />
-                  <span class="font-bold">Usuario Activo</span>
-                </label>
-              </div>
+              <div class="mb-4"><label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"><input type="checkbox" id="usuarioActivo" checked style="width: 1.25rem; height: 1.25rem;" /><span class="font-bold">Usuario Activo</span></label></div>
             </div>
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalUsuario()" class="btn btn-gray">Cancelar</button>
@@ -2386,7 +2112,7 @@ class VersumCRM {
             </div>
             <div class="modal-footer">
               <button type="button" onclick="app.closeModalResetPassword()" class="btn btn-gray">Cancelar</button>
-              <button type="submit" class="btn btn-gold">Resetear Contraseña</button>
+              <button type="submit" class="btn btn-gold">Resetear</button>
             </div>
           </form>
         </div>
@@ -2398,16 +2124,10 @@ class VersumCRM {
     try {
       const { data: usuarios, error } = await supabaseClient.from('usuarios').select('*').order('created_at', { ascending: false });
       if (error) throw error;
-
       document.getElementById('totalUsuarios').textContent = usuarios.length;
       document.getElementById('usuariosActivos').textContent = usuarios.filter(u => u.activo).length;
-
       const container = document.getElementById('usuariosList');
-      if (!usuarios || usuarios.length === 0) {
-        container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600">No hay usuarios registrados</p></div>`;
-        return;
-      }
-
+      if (!usuarios || !usuarios.length) { container.innerHTML = `<div class="card text-center py-8"><p class="text-gray-600">No hay usuarios</p></div>`; return; }
       container.innerHTML = usuarios.map(u => `
         <div class="card">
           <div class="flex justify-between" style="align-items: flex-start;">
@@ -2419,46 +2139,34 @@ class VersumCRM {
               </div>
               <p class="text-gray-600">📧 ${u.email}</p>
               ${u.comision_porcentaje > 0 ? `<p class="text-gray-600 mt-1">💰 Comisión: <strong>${u.comision_porcentaje}%</strong></p>` : ''}
-              <p style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.5rem;">Creado: ${new Date(u.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
             </div>
             <div class="flex gap-2" style="align-items: flex-start; flex-wrap: wrap;">
               ${u.id !== this.currentUser.id ? `
                 <button onclick="app.toggleUsuarioActivo('${u.id}', ${u.activo})" class="btn btn-sm ${u.activo ? 'btn-red' : 'btn-blue'}" style="font-size: 0.75rem;">${u.activo ? 'Desactivar' : 'Activar'}</button>
-                <button onclick="app.openModalResetPassword('${u.id}', '${u.nombre.replace(/'/g, "\\'")}')" class="btn btn-sm btn-gray" style="font-size: 0.75rem;">Resetear Contraseña</button>
-                <button onclick="app.editUsuario('${u.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem;" title="Editar">✏️</button>
+                <button onclick="app.openModalResetPassword('${u.id}', '${u.nombre.replace(/'/g, "\\'")}')" class="btn btn-sm btn-gray" style="font-size: 0.75rem;">Resetear</button>
+                <button onclick="app.editUsuario('${u.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1.25rem;">✏️</button>
               ` : `<span class="badge badge-blue">Tú</span>`}
             </div>
           </div>
         </div>
       `).join('');
-
-    } catch (err) {
-      console.error('Error cargando usuarios:', err);
-      document.getElementById('usuariosList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando usuarios</p></div>`;
-    }
+    } catch (err) { console.error('Error cargando usuarios:', err); document.getElementById('usuariosList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando usuarios</p></div>`; }
   }
 
-  getRolBadgeColor(rol) {
-    const colors = { ceo: 'badge badge-orange', admin: 'badge badge-green', comercial: 'badge badge-blue' };
-    return colors[rol] || 'badge badge-blue';
-  }
-
-  getRolLabel(rol) {
-    const labels = { ceo: '👑 CEO', admin: '⚙️ Administrador', comercial: '💼 Comercial' };
-    return labels[rol] || rol;
-  }
+  getRolBadgeColor(rol) { const colors = { ceo: 'badge badge-orange', admin: 'badge badge-green', comercial: 'badge badge-blue' }; return colors[rol] || 'badge badge-blue'; }
+  getRolLabel(rol) { const labels = { ceo: '👑 CEO', admin: '⚙️ Admin', comercial: '💼 Comercial' }; return labels[rol] || rol; }
 
   openModalUsuario(usuario = null) {
     this.editingUsuario = usuario;
     const title = document.getElementById('modalUsuarioTitle');
     const btn = document.getElementById('btnGuardarUsuario');
-    const passInput = document.getElementById('usuarioPassword');
-
     if (usuario) {
       title.textContent = 'Editar Usuario'; btn.textContent = 'Actualizar Usuario';
       document.getElementById('usuarioNombre').value = usuario.nombre || '';
       document.getElementById('usuarioEmail').value = usuario.email || '';
-      passInput.value = ''; passInput.placeholder = 'Dejar en blanco para no cambiar'; passInput.required = false;
+      document.getElementById('usuarioPassword').value = '';
+      document.getElementById('usuarioPassword').placeholder = 'Dejar en blanco para no cambiar';
+      document.getElementById('usuarioPassword').required = false;
       document.getElementById('usuarioRol').value = usuario.rol || 'comercial';
       document.getElementById('usuarioComision').value = usuario.comision_porcentaje || 0;
       document.getElementById('usuarioActivo').checked = usuario.activo !== false;
@@ -2466,12 +2174,13 @@ class VersumCRM {
       title.textContent = 'Nuevo Usuario'; btn.textContent = 'Guardar Usuario';
       document.getElementById('usuarioNombre').value = '';
       document.getElementById('usuarioEmail').value = '';
-      passInput.value = ''; passInput.placeholder = 'Mínimo 6 caracteres'; passInput.required = true;
+      document.getElementById('usuarioPassword').value = '';
+      document.getElementById('usuarioPassword').placeholder = 'Mínimo 6 caracteres';
+      document.getElementById('usuarioPassword').required = true;
       document.getElementById('usuarioRol').value = 'comercial';
       document.getElementById('usuarioComision').value = 0;
       document.getElementById('usuarioActivo').checked = true;
     }
-
     this.updateComisionField();
     document.getElementById('modalUsuario').classList.add('active');
   }
@@ -2480,47 +2189,31 @@ class VersumCRM {
 
   updateComisionField() {
     const rol = document.getElementById('usuarioRol').value;
-    const comisionField = document.getElementById('comisionField');
-    comisionField.style.display = rol === 'comercial' ? 'block' : 'none';
+    document.getElementById('comisionField').style.display = rol === 'comercial' ? 'block' : 'none';
     if (rol !== 'comercial') document.getElementById('usuarioComision').value = 0;
   }
 
   async handleUsuarioSubmit(e) {
     e.preventDefault();
-    const usuarioData = {
-      nombre: document.getElementById('usuarioNombre').value,
-      email: document.getElementById('usuarioEmail').value,
-      rol: document.getElementById('usuarioRol').value,
-      activo: document.getElementById('usuarioActivo').checked,
-      comision_porcentaje: parseFloat(document.getElementById('usuarioComision').value) || 0
-    };
+    const usuarioData = { nombre: document.getElementById('usuarioNombre').value, email: document.getElementById('usuarioEmail').value, rol: document.getElementById('usuarioRol').value, activo: document.getElementById('usuarioActivo').checked, comision_porcentaje: parseFloat(document.getElementById('usuarioComision').value) || 0 };
     const password = document.getElementById('usuarioPassword').value;
-
     try {
       if (this.editingUsuario) {
         const updateData = { ...usuarioData };
         if (password) updateData.password_hash = password;
         const { error } = await supabaseClient.from('usuarios').update(updateData).eq('id', this.editingUsuario.id);
         if (error) throw error;
-        showNotification('✅ Usuario actualizado correctamente');
-        if (this.editingUsuario.id === this.currentUser.id) {
-          this.currentUser = { ...this.currentUser, ...usuarioData };
-          localStorage.setItem('versum_user', JSON.stringify(this.currentUser));
-        }
+        showNotification('✅ Usuario actualizado');
+        if (this.editingUsuario.id === this.currentUser.id) { this.currentUser = { ...this.currentUser, ...usuarioData }; localStorage.setItem('versum_user', JSON.stringify(this.currentUser)); }
       } else {
         usuarioData.password_hash = password;
         usuarioData.created_at = new Date().toISOString();
         const { error } = await supabaseClient.from('usuarios').insert([usuarioData]);
-        if (error) { if (error.code === '23505') { showNotification('❌ Este email ya está registrado'); return; } throw error; }
-        showNotification('✅ Usuario creado correctamente');
+        if (error) { if (error.code === '23505') { showNotification('❌ Email ya registrado'); return; } throw error; }
+        showNotification('✅ Usuario creado');
       }
-      this.closeModalUsuario();
-      this.loadUsuarios();
-      await this.loadComerciales();
-    } catch (err) {
-      console.error('Error guardando usuario:', err);
-      showNotification('❌ Error al guardar usuario');
-    }
+      this.closeModalUsuario(); this.loadUsuarios(); await this.loadComerciales();
+    } catch (err) { console.error('Error guardando usuario:', err); showNotification('❌ Error al guardar usuario'); }
   }
 
   async editUsuario(id) {
@@ -2536,9 +2229,7 @@ class VersumCRM {
     try {
       const { error } = await supabaseClient.from('usuarios').update({ activo: !activo }).eq('id', id);
       if (error) throw error;
-      showNotification(`✅ Usuario ${activo ? 'desactivado' : 'activado'}`);
-      this.loadUsuarios();
-      await this.loadComerciales();
+      showNotification(`✅ Usuario ${activo ? 'desactivado' : 'activado'}`); this.loadUsuarios(); await this.loadComerciales();
     } catch (err) { console.error('Error actualizando usuario:', err); showNotification('❌ Error al actualizar usuario'); }
   }
 
@@ -2553,17 +2244,19 @@ class VersumCRM {
 
   async handleResetPasswordSubmit(e) {
     e.preventDefault();
+    const nuevaPassword = document.getElementById('resetPasswordNueva').value;
     try {
-      const { error } = await supabaseClient.from('usuarios').update({ password_hash: document.getElementById('resetPasswordNueva').value }).eq('id', this.resetPasswordUserId);
+      const { error } = await supabaseClient.from('usuarios').update({ password_hash: nuevaPassword }).eq('id', this.resetPasswordUserId);
       if (error) throw error;
-      showNotification('✅ Contraseña reseteada correctamente');
-      this.closeModalResetPassword();
+      showNotification('✅ Contraseña reseteada'); this.closeModalResetPassword();
     } catch (err) { console.error('Error reseteando contraseña:', err); showNotification('❌ Error al resetear contraseña'); }
   }
 }
 
-const app = new VersumCRM();
+let app;
+window.addEventListener('load', () => {
+  app = new VersumCRM();
+});
   </script>
 </body>
 </html>
-
