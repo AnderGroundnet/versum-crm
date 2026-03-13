@@ -59,8 +59,68 @@
     .grid-3 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
     .notification { position: fixed; top: 1rem; right: 1rem; background: white; padding: 1rem 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none; z-index: 2000; border-left: 4px solid #D4A574; }
     .notification.show { display: block; }
-    /* Agrupación */
-    .grupo-header { background: #f3f4f6; border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 0.5rem; margin-top: 1rem; font-weight: 700; color: #374151; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+
+    /* ── GRUPOS CLIENTES con colapso ── */
+    .grupo-header {
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      margin-bottom: 0.5rem;
+      margin-top: 1rem;
+      font-weight: 700;
+      color: #374151;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid #e5e7eb;
+      transition: background 0.15s;
+    }
+    .grupo-header:hover { background: #e9eaec; }
+    .grupo-chevron { margin-left: auto; transition: transform 0.2s; font-style: normal; }
+    .grupo-header.collapsed .grupo-chevron { transform: rotate(-90deg); }
+    .grupo-body { overflow: hidden; }
+
+    /* ── PEDIDOS colapsados ── */
+    .pedido-row-compact {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 0.5rem;
+      border-left: 4px solid #e5e7eb;
+      cursor: pointer;
+      transition: box-shadow 0.15s;
+    }
+    .pedido-row-compact:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+    .pedido-row-compact.prioridad { border-left-color: #f59e0b; }
+    .pedido-row-compact.archivado { opacity: 0.65; border-left-color: #d1d5db; }
+    .pedido-compact-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      flex-wrap: wrap;
+    }
+    .pedido-compact-nombre { font-weight: 700; flex: 1; min-width: 140px; }
+    .pedido-compact-fecha { font-size: 0.8rem; color: #6b7280; white-space: nowrap; }
+    .pedido-compact-total { font-weight: 700; color: #D4A574; white-space: nowrap; }
+    .pedido-compact-chevron { color: #9ca3af; font-size: 0.9rem; transition: transform 0.2s; }
+    .pedido-row-compact.open .pedido-compact-chevron { transform: rotate(90deg); }
+    .pedido-detail { display: none; padding: 0 1rem 1rem 1rem; border-top: 1px solid #f3f4f6; }
+    .pedido-row-compact.open .pedido-detail { display: block; }
+
+    /* Separador sección archivados */
+    .pedidos-section-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.5rem 0.25rem 0.25rem;
+      margin-top: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -92,7 +152,8 @@ class VersumCRM {
     this.pedidoItems = [];
     this.pedidosProductosHidden = localStorage.getItem('pedidosHideProducts') === 'true';
     this.productosListHidden = localStorage.getItem('productosListHidden') === 'true';
-    this.collapsedPedidos = {};
+    this.collapsedGrupos = {};   // grupos de clientes
+    this.openPedidos = {};       // pedidos expandidos
     this.init();
   }
 
@@ -138,7 +199,6 @@ class VersumCRM {
             <div id="loginError" style="display:none; background:#fee2e2; border:1px solid #fca5a5; border-radius:8px; padding:0.75rem; margin-bottom:0.75rem; color:#991b1b; font-size:0.875rem;"></div>
             <button type="submit" class="btn btn-gold" style="width: 100%;">Iniciar Sesión</button>
           </form>
-
         </div>
       </div>
     `;
@@ -253,7 +313,7 @@ class VersumCRM {
           content.innerHTML = this.renderFacturacionView(); this.loadFacturacion();
         } else { content.innerHTML = '<div class="card"><p class="text-center text-gray-600">Acceso denegado</p></div>'; }
         break;
-      case 'finanzas': content.innerHTML = this.renderFinanzasView(); this.loadFinanzas('todas'); break;
+      case 'finanzas': content.innerHTML = this.renderFinanzasView(); this.loadFinanzas(); break;
       case 'usuarios':
         if (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') { content.innerHTML = this.renderUsuariosView(); this.loadUsuarios(); }
         break;
@@ -262,7 +322,7 @@ class VersumCRM {
   }
 
   // ============================================
-  // MÓDULO CLIENTES - CON LOCALIDAD Y AGRUPACIONES
+  // MÓDULO CLIENTES
   // ============================================
   renderClientesView() {
     return `
@@ -338,7 +398,6 @@ class VersumCRM {
                 <label class="label">Dirección</label>
                 <input type="text" id="clienteDireccion" class="input" />
               </div>
-              <!-- NUEVO: Localidad -->
               <div class="mb-4">
                 <label class="label">Localidad</label>
                 <input type="text" id="clienteLocalidad" class="input" placeholder="Ej: Donostia, Bilbao, Vitoria..." />
@@ -375,32 +434,34 @@ class VersumCRM {
     `;
   }
 
+  // ── SORT FIX: aplicar orden solo una vez según el select ──
   async loadClientes() {
     try {
-      let query = supabaseClient
-        .from('clientes')
-        .select('*, asignado:usuarios!clientes_asignado_a_fkey(id, nombre, email)')
-        .order('fecha_creacion', { ascending: false });
-
       const sort = document.getElementById('clientesSort')?.value || 'fecha_desc';
       const faseFiltro = document.getElementById('clientesFase')?.value || '';
       const asignadoFiltro = document.getElementById('clientesAsignado')?.value || '';
       const search = document.getElementById('clientesSearch')?.value?.toLowerCase() || '';
       const agrupacion = document.getElementById('clientesAgrupacion')?.value || '';
 
+      // Sin .order() previo — solo el del switch
+      let query = supabaseClient
+        .from('clientes')
+        .select('*, asignado:usuarios!clientes_asignado_a_fkey(id, nombre, email)');
+
       if (faseFiltro) query = query.eq('fase', faseFiltro);
       if (asignadoFiltro === 'sin_asignar') query = query.is('asignado_a', null);
       else if (asignadoFiltro) query = query.eq('asignado_a', asignadoFiltro);
-
       if (this.currentUser.rol === 'comercial') {
         query = query.or(`asignado_a.eq.${this.currentUser.id},asignado_a.is.null`);
       }
 
+      // UN SOLO order() según selector
       switch (sort) {
-        case 'nombre_asc': query = query.order('nombre', { ascending: true }); break;
+        case 'nombre_asc':  query = query.order('nombre', { ascending: true }); break;
         case 'nombre_desc': query = query.order('nombre', { ascending: false }); break;
-        case 'fecha_asc': query = query.order('fecha_creacion', { ascending: true }); break;
-        case 'fecha_desc': query = query.order('fecha_creacion', { ascending: false }); break;
+        case 'fecha_asc':   query = query.order('fecha_creacion', { ascending: true }); break;
+        case 'fecha_desc':  query = query.order('fecha_creacion', { ascending: false }); break;
+        default:            query = query.order('fecha_creacion', { ascending: false });
       }
 
       const { data: clientes, error } = await query;
@@ -412,9 +473,11 @@ class VersumCRM {
         return;
       }
 
-      let clientesFiltrados = search ? clientes.filter(c => (c.nombre || '').toLowerCase().includes(search)) : clientes;
+      let clientesFiltrados = search
+        ? clientes.filter(c => (c.nombre || '').toLowerCase().includes(search))
+        : clientes;
 
-      // AGRUPACIÓN
+      // AGRUPACIÓN CON COLAPSO
       if (agrupacion) {
         let grupos = {};
         clientesFiltrados.forEach(c => {
@@ -426,16 +489,29 @@ class VersumCRM {
           grupos[key].push(c);
         });
 
+        // Ordenar clientes dentro de cada grupo según sort seleccionado (client-side)
+        const sortFn = this.getClienteSortFn(sort);
+        Object.keys(grupos).forEach(k => grupos[k].sort(sortFn));
+
         const sortedKeys = Object.keys(grupos).sort();
-        container.innerHTML = sortedKeys.map(key => `
-          <div>
-            <div class="grupo-header">
-              ${agrupacion === 'localidad' ? '📍' : agrupacion === 'asignado' ? '👤' : '🏷️'}
-              ${key} <span style="background: #d1d5db; border-radius: 9999px; padding: 0.1rem 0.5rem; font-size: 0.75rem; margin-left: 0.25rem;">${grupos[key].length}</span>
+        const icon = agrupacion === 'localidad' ? '📍' : agrupacion === 'asignado' ? '👤' : '🏷️';
+
+        container.innerHTML = sortedKeys.map(key => {
+          const collapsed = this.collapsedGrupos[key] || false;
+          const safeKey = key.replace(/'/g, "\\'");
+          return `
+            <div>
+              <div class="grupo-header ${collapsed ? 'collapsed' : ''}" onclick="app.toggleGrupo('${safeKey}')">
+                ${icon} ${key}
+                <span style="background: #d1d5db; border-radius: 9999px; padding: 0.1rem 0.5rem; font-size: 0.75rem;">${grupos[key].length}</span>
+                <i class="grupo-chevron">▶</i>
+              </div>
+              <div class="grupo-body" id="grupo-body-${this.slugify(key)}" style="display: ${collapsed ? 'none' : 'block'};">
+                ${grupos[key].map(c => this.renderClienteCard(c)).join('')}
+              </div>
             </div>
-            ${grupos[key].map(c => this.renderClienteCard(c)).join('')}
-          </div>
-        `).join('');
+          `;
+        }).join('');
       } else {
         container.innerHTML = clientesFiltrados.map(c => this.renderClienteCard(c)).join('');
       }
@@ -444,6 +520,35 @@ class VersumCRM {
       console.error('Error cargando clientes:', err);
       document.getElementById('clientesList').innerHTML = `<div class="card text-center py-8"><p style="color: #ef4444;">Error cargando clientes</p><button onclick="app.loadClientes()" class="btn btn-blue btn-sm mt-2">Reintentar</button></div>`;
     }
+  }
+
+  // Función de sort client-side para grupos
+  getClienteSortFn(sort) {
+    switch(sort) {
+      case 'nombre_asc':  return (a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es');
+      case 'nombre_desc': return (a, b) => (b.nombre || '').localeCompare(a.nombre || '', 'es');
+      case 'fecha_asc':   return (a, b) => new Date(a.fecha_creacion) - new Date(b.fecha_creacion);
+      case 'fecha_desc':  return (a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion);
+      default:            return (a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion);
+    }
+  }
+
+  slugify(str) {
+    return str.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  }
+
+  // Toggle colapso de grupo
+  toggleGrupo(key) {
+    this.collapsedGrupos[key] = !this.collapsedGrupos[key];
+    const collapsed = this.collapsedGrupos[key];
+    const body = document.getElementById(`grupo-body-${this.slugify(key)}`);
+    if (body) body.style.display = collapsed ? 'none' : 'block';
+    // Rotar chevron en el header
+    document.querySelectorAll('.grupo-header').forEach(h => {
+      if (h.textContent.includes(key.substring(0, 15))) {
+        h.classList.toggle('collapsed', collapsed);
+      }
+    });
   }
 
   renderClienteCard(c) {
@@ -467,7 +572,7 @@ class VersumCRM {
                 ? `<span class="badge badge-green">👤 ${c.asignado.nombre}</span>`
                 : `<span class="badge badge-orange">⚠️ Sin asignar</span>
                    ${this.currentUser.rol === 'comercial'
-                     ? `<button onclick="app.tomarCliente('${c.id}', '${c.nombre}')" class="btn btn-blue btn-sm" style="margin-left: 0.5rem;">Tomar Cliente</button>`
+                     ? `<button onclick="app.tomarCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}') " class="btn btn-blue btn-sm" style="margin-left: 0.5rem;">Tomar Cliente</button>`
                      : ''}`
               }
             </div>
@@ -500,7 +605,6 @@ class VersumCRM {
     const selectAsignado = document.getElementById('clienteAsignado');
     selectAsignado.innerHTML = '<option value="">Sin asignar</option>' +
       this.comerciales.map(c => `<option value="${c.id}">${c.nombre} (${c.rol})</option>`).join('');
-
     if (cliente) {
       title.textContent = 'Editar Cliente'; btn.textContent = 'Actualizar Cliente';
       document.getElementById('clienteNombre').value = cliente.nombre || '';
@@ -748,18 +852,17 @@ class VersumCRM {
         </div>
 
         <div class="card">
-          <div class="flex justify-between mb-4">
+          <div class="flex justify-between mb-4" style="flex-wrap:wrap; gap:0.5rem; align-items:center;">
             <h3 class="text-xl font-bold">Historial de Pedidos</h3>
-            <div style="display:flex; gap:0.5rem; align-items:center;">
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
               <button onclick="app.exportPedidosToExcel()" class="btn btn-sm btn-gold">Exportar Excel</button>
-              <button id="togglePedidosProductosBtn" class="btn btn-gray" onclick="app.toggleProductosVisibility()">${this.pedidosProductosHidden ? 'Mostrar productos' : 'Ocultar productos'}</button>
             </div>
           </div>
           <div id="pedidosList"><p class="text-center text-gray-600">Cargando pedidos...</p></div>
         </div>
       </div>
 
-      <!-- Modal Producto - CON CAMPO LOTE -->
+      <!-- Modal Producto -->
       <div id="modalProducto" class="modal">
         <div class="modal-content">
           <div class="modal-header">
@@ -919,7 +1022,22 @@ class VersumCRM {
     if (toggleBtn) toggleBtn.textContent = this.productosListHidden ? 'Mostrar productos' : 'Ocultar productos';
   }
 
-  // PEDIDOS CON ESTADO CON COLOR Y BOTÓN ELIMINAR
+  // ── PEDIDOS: priorización por estado + filas colapsadas ──
+  // Orden de prioridad (menores = primero)
+  getPedidoPriority(p) {
+    const estadoServicio = p.estado || '';
+    const estadoFact = p.estado_facturacion || '';
+    // Completamente resuelto → archivado
+    if (estadoServicio === 'servido' && estadoFact === 'factura cobrada') return 99;
+    // Prioritarios
+    if (estadoServicio === 'pendiente de servir') return 1;
+    if (estadoServicio === 'parcialmente servido') return 2;
+    if (estadoFact === 'pendiente de emitir factura') return 3;
+    if (estadoFact === 'factura emitida') return 4;
+    if (estadoFact === 'factura enviada') return 5;
+    return 10; // servido pero no cobrado, etc.
+  }
+
   async loadPedidos() {
     const container = document.getElementById('pedidosList');
     if (container) container.innerHTML = '<p class="text-center text-gray-600">Cargando pedidos...</p>';
@@ -927,127 +1045,179 @@ class VersumCRM {
       let query = supabaseClient
         .from('pedidos')
         .select(`*, cliente:clientes(nombre, empresa), comercial:usuarios!pedidos_comercial_id_fkey(nombre)`)
-        .order('fecha', { ascending: false })
-        .limit(50);
+        .limit(200);
       if (this.currentUser.rol === 'comercial') query = query.eq('comercial_id', this.currentUser.id);
       const { data: pedidos, error } = await query;
       if (error) throw error;
-      if (!pedidos || !pedidos.length) { if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>'; return; }
+      if (!pedidos || !pedidos.length) {
+        if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">No hay pedidos registrados</p>';
+        return;
+      }
 
-      container.innerHTML = pedidos.map(ped => {
-        const items = ped.items_json || [];
-        const subtotal = ped.subtotal || 0;
-        const descuentoTotal = ped.descuento_total || 0;
-        const descuentoPct = ped.descuento_porcentaje || 0;
-        const totalDescuentos = descuentoTotal + ((subtotal * descuentoPct) / 100);
-        const canEdit = (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin' || ped.comercial_id === this.currentUser.id);
-        const isHidden = this.collapsedPedidos[ped.id] || this.pedidosProductosHidden;
+      // Ordenar: prioritarios cronológico asc, archivados cronológico desc
+      const prioritarios = pedidos
+        .filter(p => this.getPedidoPriority(p) < 99)
+        .sort((a, b) => {
+          const pd = this.getPedidoPriority(a) - this.getPedidoPriority(b);
+          if (pd !== 0) return pd;
+          return new Date(a.fecha) - new Date(b.fecha); // más antiguo primero
+        });
 
-        // Estado colores
-        let estadoClass = 'estado-pendiente';
-        if (ped.estado === 'servido') estadoClass = 'estado-servido';
-        else if (ped.estado === 'parcialmente servido') estadoClass = 'estado-parcial';
+      const archivados = pedidos
+        .filter(p => this.getPedidoPriority(p) === 99)
+        .sort((a, b) => new Date(b.fecha) - new Date(a.fecha)); // más reciente primero
 
-        return `
-          <div class="card" style="margin-bottom: 1rem;">
-            <div class="flex justify-between mb-3">
-              <div>
-                <h4 class="font-bold">${ped.cliente?.nombre || 'Cliente N/A'}${ped.cliente?.empresa ? ' - ' + ped.cliente.empresa : ''}</h4>
-                <p style="font-size: 0.875rem; color: #6b7280;">${new Date(ped.fecha).toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit', year: 'numeric'})}</p>
-              </div>
-              <div style="text-align: right;">
-                <p style="font-weight: 600; color: #D4A574; font-size: 1.25rem;">€${parseFloat(ped.total).toFixed(2)}</p>
-                <!-- ESTADO CON COLORES -->
-                ${canEdit ? `
-                  <select onchange="app.updateEstadoPedido('${ped.id}', this.value)" style="margin-top:0.25rem; padding:0.3rem 0.5rem; border-radius:6px; border:2px solid #e5e7eb; font-weight:600; font-size:0.8rem; cursor:pointer; background:white;" class="${estadoClass}">
-                    <option value="pendiente de servir" ${ped.estado === 'pendiente de servir' ? 'selected' : ''} style="background:white; color:#991b1b;">🔴 Pendiente de servir</option>
-                    <option value="parcialmente servido" ${ped.estado === 'parcialmente servido' ? 'selected' : ''} style="background:white; color:#854d0e;">🟡 Parcialmente servido</option>
-                    <option value="servido" ${ped.estado === 'servido' ? 'selected' : ''} style="background:white; color:#065f46;">🟢 Servido</option>
-                  </select>
-                ` : `<span class="badge ${estadoClass}" style="margin-top:0.25rem; display:inline-block;">${ped.estado}</span>`}
-              </div>
-            </div>
+      let html = '';
+      if (prioritarios.length) {
+        html += `<div class="pedidos-section-label">⚡ Activos (${prioritarios.length})</div>`;
+        html += prioritarios.map(ped => this.renderPedidoRow(ped, false)).join('');
+      }
+      if (archivados.length) {
+        html += `<div class="pedidos-section-label" style="margin-top:1.5rem;">✅ Completados (${archivados.length})</div>`;
+        html += archivados.map(ped => this.renderPedidoRow(ped, true)).join('');
+      }
 
-            <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
-              ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
-                <div style="margin-bottom:0.5rem;">
-                  <label class="label" style="font-size:0.85rem; margin-bottom:0.25rem; display:block;">Estado de facturación</label>
-                  <select onchange="app.updatePedidoFacturacion('${ped.id}', this.value)" style="padding:0.4rem; border-radius:6px;">
-                    <option value="pendiente de emitir factura" ${ped.estado_facturacion === 'pendiente de emitir factura' ? 'selected' : ''}>Pendiente de emitir factura</option>
-                    <option value="factura emitida" ${ped.estado_facturacion === 'factura emitida' ? 'selected' : ''}>Factura emitida</option>
-                    <option value="factura enviada" ${ped.estado_facturacion === 'factura enviada' ? 'selected' : ''}>Factura enviada</option>
-                    <option value="factura cobrada" ${ped.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Factura cobrada</option>
-                  </select>
-                </div>
-              ` : `<div style="margin-bottom:0.5rem;"><strong>Factura:</strong> ${ped.estado_facturacion || 'N/A'}</div>`}
-              <div class="flex justify-between" style="align-items:center; margin-bottom:0.5rem;">
-                <p style="font-size: 0.875rem; font-weight: 600; margin: 0;">Productos (${items.length}):</p>
-                <button id="pedido-toggle-${ped.id}" class="btn btn-gray" style="font-size:0.8rem; padding:0.2rem 0.5rem;" onclick="app.togglePedidoItems('${ped.id}')">${isHidden ? 'Mostrar productos' : 'Ocultar productos'}</button>
-              </div>
-              <div id="pedido-items-${ped.id}" class="pedido-items" style="display: ${isHidden ? 'none' : 'block'};">
-                ${items.map(item => `
-                  <div style="font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
-                    • ${item.cantidad}x ${item.producto_nombre} @ €${parseFloat(item.precio_unitario).toFixed(2)}/u
-                    ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;"> (-${item.descuento_unitario}%)</span>` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-
-            <div style="background: #f0f9ff; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #3b82f6;">
-              <div class="flex justify-between" style="font-size: 0.875rem; margin-bottom: 0.25rem;"><span>Subtotal:</span><span>€${subtotal.toFixed(2)}</span></div>
-              ${totalDescuentos > 0 ? `<div class="flex justify-between" style="font-size: 0.875rem; color: #dc2626; margin-bottom: 0.25rem;"><span>Descuentos:</span><span>-€${totalDescuentos.toFixed(2)}</span></div>` : ''}
-              <div class="flex justify-between" style="font-size: 0.875rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;"><span>TOTAL:</span><span>€${parseFloat(ped.total).toFixed(2)}</span></div>
-            </div>
-
-            ${canEdit ? `
-              <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                <div style="font-size:0.875rem; color:#6b7280; flex:1;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>
-                <button onclick="app.openModalEditPedido('${ped.id}')" class="btn btn-sm btn-gray">✏️ Editar</button>
-                <button onclick="app.deletePedido('${ped.id}', '${(ped.cliente?.nombre || 'este pedido').replace(/'/g, "\\'")}')" class="btn btn-sm btn-red">🗑️ Eliminar</button>
-              </div>
-            ` : `<div style="margin-top: 0.75rem; font-size: 0.875rem; color: #6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>`}
-          </div>
-        `;
-      }).join('');
+      container.innerHTML = html;
     } catch (err) {
       console.error('Error cargando pedidos:', err);
       if (container) container.innerHTML = '<p class="text-center text-gray-600 py-4">Error cargando pedidos</p>';
     }
   }
 
-  // NUEVO: Actualizar estado de servicio del pedido
+  renderPedidoRow(ped, isArchivado) {
+    const isOpen = this.openPedidos[ped.id] || false;
+    const items = ped.items_json || [];
+    const subtotal = ped.subtotal || 0;
+    const descuentoTotal = ped.descuento_total || 0;
+    const descuentoPct = ped.descuento_porcentaje || 0;
+    const totalDescuentos = descuentoTotal + ((subtotal * descuentoPct) / 100);
+    const canEdit = (this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin' || ped.comercial_id === this.currentUser.id);
+
+    // Badges de estado compactos
+    const estadoServicioBadge = this.getEstadoServicioBadge(ped.estado);
+    const estadoFactBadge = this.getEstadoFactBadge(ped.estado_facturacion);
+
+    const fechaStr = new Date(ped.fecha).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'2-digit'});
+    const nombreCliente = ped.cliente?.nombre || 'Cliente N/A';
+    const empresa = ped.cliente?.empresa ? ` — ${ped.cliente.empresa}` : '';
+
+    return `
+      <div class="pedido-row-compact ${isArchivado ? 'archivado' : 'prioridad'} ${isOpen ? 'open' : ''}" id="pedido-row-${ped.id}">
+        <!-- FILA COMPACTA -->
+        <div class="pedido-compact-header" onclick="app.togglePedidoRow('${ped.id}')">
+          <span class="pedido-compact-nombre">${nombreCliente}${empresa}</span>
+          <span class="pedido-compact-fecha">📅 ${fechaStr}</span>
+          <span class="pedido-compact-total">€${parseFloat(ped.total).toFixed(2)}</span>
+          ${estadoServicioBadge}
+          ${estadoFactBadge}
+          <span class="pedido-compact-chevron">▶</span>
+        </div>
+
+        <!-- DETALLE EXPANDIDO -->
+        <div class="pedido-detail">
+          <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+            <div class="flex justify-between" style="align-items:center; margin-bottom:0.5rem;">
+              <p style="font-size: 0.875rem; font-weight: 600;">Productos (${items.length}):</p>
+            </div>
+            ${items.map(item => `
+              <div style="font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
+                • ${item.cantidad}x ${item.producto_nombre} @ €${parseFloat(item.precio_unitario).toFixed(2)}/u
+                ${item.descuento_unitario > 0 ? `<span style="color: #dc2626;"> (-${item.descuento_unitario}%)</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+
+          <div style="background: #f0f9ff; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom:0.75rem;">
+            <div class="flex justify-between" style="font-size: 0.875rem; margin-bottom: 0.25rem;"><span>Subtotal:</span><span>€${subtotal.toFixed(2)}</span></div>
+            ${totalDescuentos > 0 ? `<div class="flex justify-between" style="font-size: 0.875rem; color: #dc2626; margin-bottom: 0.25rem;"><span>Descuentos:</span><span>-€${totalDescuentos.toFixed(2)}</span></div>` : ''}
+            <div class="flex justify-between" style="font-size: 0.875rem; font-weight: 700; color: #D4A574; border-top: 1px solid #bfdbfe; padding-top: 0.5rem;"><span>TOTAL:</span><span>€${parseFloat(ped.total).toFixed(2)}</span></div>
+          </div>
+
+          <div style="background: #f9fafb; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+            ${canEdit ? `
+              <div style="margin-bottom:0.75rem;">
+                <label class="label" style="font-size:0.8rem; margin-bottom:0.25rem; display:block;">Estado de servicio</label>
+                <select onchange="app.updateEstadoPedido('${ped.id}', this.value)" style="padding:0.4rem; border-radius:6px; border:2px solid #e5e7eb; font-weight:600; font-size:0.85rem; cursor:pointer; background:white;">
+                  <option value="pendiente de servir" ${ped.estado === 'pendiente de servir' ? 'selected' : ''}>🔴 Pendiente de servir</option>
+                  <option value="parcialmente servido" ${ped.estado === 'parcialmente servido' ? 'selected' : ''}>🟡 Parcialmente servido</option>
+                  <option value="servido" ${ped.estado === 'servido' ? 'selected' : ''}>🟢 Servido</option>
+                </select>
+              </div>
+            ` : `<div style="margin-bottom:0.5rem;"><strong>Servicio:</strong> ${ped.estado || 'N/A'}</div>`}
+
+            ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `
+              <div>
+                <label class="label" style="font-size:0.8rem; margin-bottom:0.25rem; display:block;">Estado de facturación</label>
+                <select onchange="app.updatePedidoFacturacion('${ped.id}', this.value)" style="padding:0.4rem; border-radius:6px; border:1px solid #d1d5db; font-size:0.85rem;">
+                  <option value="pendiente de emitir factura" ${ped.estado_facturacion === 'pendiente de emitir factura' ? 'selected' : ''}>Pendiente de emitir factura</option>
+                  <option value="factura emitida" ${ped.estado_facturacion === 'factura emitida' ? 'selected' : ''}>Factura emitida</option>
+                  <option value="factura enviada" ${ped.estado_facturacion === 'factura enviada' ? 'selected' : ''}>Factura enviada</option>
+                  <option value="factura cobrada" ${ped.estado_facturacion === 'factura cobrada' ? 'selected' : ''}>Factura cobrada</option>
+                </select>
+              </div>
+            ` : `<div><strong>Factura:</strong> ${ped.estado_facturacion || 'N/A'}</div>`}
+          </div>
+
+          ${canEdit ? `
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+              <div style="font-size:0.875rem; color:#6b7280; flex:1;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>
+              <button onclick="app.openModalEditPedido('${ped.id}')" class="btn btn-sm btn-gray">✏️ Editar</button>
+              <button onclick="app.deletePedido('${ped.id}', '${(ped.cliente?.nombre || 'este pedido').replace(/'/g, "\\'")}')" class="btn btn-sm btn-red">🗑️ Eliminar</button>
+            </div>
+          ` : `<div style="font-size: 0.875rem; color: #6b7280;"><strong>Comercial:</strong> ${ped.comercial?.nombre || 'N/A'}</div>`}
+        </div>
+      </div>
+    `;
+  }
+
+  getEstadoServicioBadge(estado) {
+    const map = {
+      'pendiente de servir':   '<span class="badge" style="background:#fee2e2; color:#991b1b; font-size:0.7rem;">🔴 Pendiente</span>',
+      'parcialmente servido':  '<span class="badge" style="background:#fef9c3; color:#854d0e; font-size:0.7rem;">🟡 Parcial</span>',
+      'servido':               '<span class="badge" style="background:#d1fae5; color:#065f46; font-size:0.7rem;">🟢 Servido</span>',
+    };
+    return map[estado] || `<span class="badge badge-blue" style="font-size:0.7rem;">${estado || '—'}</span>`;
+  }
+
+  getEstadoFactBadge(estado) {
+    const map = {
+      'pendiente de emitir factura': '<span class="badge" style="background:#fee2e2; color:#991b1b; font-size:0.7rem;">📄 Sin factura</span>',
+      'factura emitida':             '<span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.7rem;">📄 Emitida</span>',
+      'factura enviada':             '<span class="badge" style="background:#dbeafe; color:#1e40af; font-size:0.7rem;">📤 Enviada</span>',
+      'factura cobrada':             '<span class="badge" style="background:#d1fae5; color:#065f46; font-size:0.7rem;">💰 Cobrada</span>',
+    };
+    return map[estado] || `<span class="badge badge-blue" style="font-size:0.7rem;">${estado || '—'}</span>`;
+  }
+
+  togglePedidoRow(pedidoId) {
+    this.openPedidos[pedidoId] = !this.openPedidos[pedidoId];
+    const row = document.getElementById(`pedido-row-${pedidoId}`);
+    if (row) row.classList.toggle('open', this.openPedidos[pedidoId]);
+  }
+
   async updateEstadoPedido(pedidoId, nuevoEstado) {
     try {
       const { error } = await supabaseClient.from('pedidos').update({ estado: nuevoEstado }).eq('id', pedidoId);
       if (error) throw error;
       await this.registrarActividad('actualizar', 'pedidos', pedidoId, { estado: nuevoEstado });
       showNotification(`✅ Estado actualizado: ${nuevoEstado}`);
-      // Actualizar visualmente el select
       this.loadPedidos();
     } catch (err) { console.error('Error actualizando estado:', err); showNotification('❌ Error al actualizar estado'); }
   }
 
-  // NUEVO: Eliminar pedido con recuperación de stock
   async deletePedido(pedidoId, nombreCliente) {
     if (!confirm(`¿Eliminar el pedido de "${nombreCliente}"? El stock de todos los productos se recuperará automáticamente.`)) return;
     try {
       const { data: pedido, error: errGet } = await supabaseClient.from('pedidos').select('items_json, total').eq('id', pedidoId).single();
       if (errGet || !pedido) { showNotification('❌ No se pudo obtener el pedido'); return; }
-
       const items = pedido.items_json || [];
-      // Recuperar stock de cada producto
       for (const item of items) {
         if (!item.producto_id) continue;
         const { data: prod } = await supabaseClient.from('productos').select('stock').eq('id', item.producto_id).single();
-        if (prod) {
-          await supabaseClient.from('productos').update({ stock: prod.stock + item.cantidad }).eq('id', item.producto_id);
-        }
+        if (prod) await supabaseClient.from('productos').update({ stock: prod.stock + item.cantidad }).eq('id', item.producto_id);
       }
-
       const { error: errDel } = await supabaseClient.from('pedidos').delete().eq('id', pedidoId);
       if (errDel) throw errDel;
-
       await this.registrarActividad('eliminar', 'pedidos', pedidoId, { cliente: nombreCliente });
       showNotification('✅ Pedido eliminado y stock recuperado');
       this.loadProductos();
@@ -1064,7 +1234,6 @@ class VersumCRM {
         if (!exists || exists.length === 0) {
           const { data: pedido } = await supabaseClient.from('pedidos').select('total, comercial_id, fecha, cliente_id').eq('id', pedidoId).single();
           if (pedido) {
-            // Obtener nombre del cliente para concepto legible
             const { data: cliente } = await supabaseClient.from('clientes').select('nombre').eq('id', pedido.cliente_id).single();
             const fechaPedido = pedido.fecha ? new Date(pedido.fecha).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'numeric'}) : '';
             const nombreCliente = cliente?.nombre || '';
@@ -1078,7 +1247,7 @@ class VersumCRM {
       }
       showNotification('✅ Estado de facturación actualizado');
       if (typeof this.loadFacturacion === 'function') this.loadFacturacion();
-      this.loadFinanzas('todas');
+      this.loadPedidos();
       this.registrarActividad('actualizar', 'pedidos', pedidoId, { estado_facturacion: nuevoEstado });
     } catch (err) { console.error('Error actualizando facturación:', err); showNotification('❌ Error al actualizar estado de facturación'); }
   }
@@ -1089,7 +1258,6 @@ class VersumCRM {
       if (!pedido) { showNotification('❌ Pedido no encontrado'); return; }
       this.editingPedidoId = pedidoId;
       this.pedidoItems = pedido.items_json || [];
-      // Cargar clientes y productos en el modal
       await this.openModalPedido(true);
       document.getElementById('pedidoCliente').value = pedido.cliente?.id || '';
       document.getElementById('nuevoClienteDiv').style.display = 'none';
@@ -1111,24 +1279,6 @@ class VersumCRM {
     const btn = document.getElementById('toggleProductosListBtn');
     if (btn) btn.textContent = this.productosListHidden ? 'Mostrar productos' : 'Ocultar productos';
     showNotification(this.productosListHidden ? 'Productos ocultados' : 'Productos visibles');
-  }
-
-  toggleProductosVisibility() {
-    this.pedidosProductosHidden = !this.pedidosProductosHidden;
-    localStorage.setItem('pedidosHideProducts', this.pedidosProductosHidden);
-    document.querySelectorAll('.pedido-items').forEach(el => { el.style.display = this.pedidosProductosHidden ? 'none' : 'block'; });
-    document.querySelectorAll('[id^="pedido-toggle-"]').forEach(btn => { btn.textContent = this.pedidosProductosHidden ? 'Mostrar productos' : 'Ocultar productos'; });
-    const globalBtn = document.getElementById('togglePedidosProductosBtn');
-    if (globalBtn) globalBtn.textContent = this.pedidosProductosHidden ? 'Mostrar productos' : 'Ocultar productos';
-  }
-
-  togglePedidoItems(pedidoId) {
-    this.collapsedPedidos[pedidoId] = !this.collapsedPedidos[pedidoId];
-    const el = document.getElementById(`pedido-items-${pedidoId}`);
-    const btn = document.getElementById(`pedido-toggle-${pedidoId}`);
-    const isHidden = this.collapsedPedidos[pedidoId] || this.pedidosProductosHidden;
-    if (el) el.style.display = isHidden ? 'none' : 'block';
-    if (btn) btn.textContent = isHidden ? 'Mostrar productos' : 'Ocultar productos';
   }
 
   openModalProducto(producto = null) {
@@ -1196,7 +1346,6 @@ class VersumCRM {
     } catch (err) { console.error('Error eliminando producto:', err); showNotification('❌ Error al eliminar producto'); }
   }
 
-  // MODAL PEDIDO
   async openModalPedido(soloCargarDatos = false) {
     if (!soloCargarDatos) {
       this.pedidoItems = [];
@@ -1325,7 +1474,6 @@ class VersumCRM {
       }
 
       if (this.editingPedidoId) {
-        // Editar pedido existente: recuperar stock anterior y restar nuevo
         const { data: pedidoAnterior } = await supabaseClient.from('pedidos').select('items_json').eq('id', this.editingPedidoId).single();
         if (pedidoAnterior?.items_json) {
           for (const item of pedidoAnterior.items_json) {
@@ -1597,30 +1745,67 @@ class VersumCRM {
   }
 
   // ============================================
-  // FINANZAS
+  // FINANZAS — CON SELECTOR DE PERÍODO
   // ============================================
   renderFinanzasView() {
+    const hoy = new Date();
+    const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+    const hoyStr = hoy.toISOString().split('T')[0];
     return `
       <div>
-        <div class="flex justify-between mb-4">
+        <div class="flex justify-between mb-4" style="flex-wrap:wrap; gap:0.5rem; align-items:center;">
           <h2 class="text-2xl font-bold">Control Financiero</h2>
           <button onclick="app.openModalFinanza()" class="btn btn-gold">+ Registrar Movimiento</button>
         </div>
-        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Total Ingresos</p><p class="text-3xl font-bold mt-2" id="totalIngresos">€0.00</p></div>
-          <div class="card" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Total Gastos</p><p class="text-3xl font-bold mt-2" id="totalGastos">€0.00</p></div>
-          <div class="card" style="background: linear-gradient(135deg, #D4A574, #C8A882); color: white;"><p style="opacity: 0.9; font-size: 0.875rem;">Balance Neto</p><p class="text-3xl font-bold mt-2" id="balanceNeto">€0.00</p></div>
-        </div>
-        ${this.currentUser.rol !== 'comercial' ? `<div class="card mb-4"><h3 class="text-xl font-bold mb-4">Comisiones de Comerciales</h3><div id="comisionesList"><p class="text-center text-gray-600">Cargando comisiones...</p></div></div>` : ''}
-        <div class="card mb-4">
-          <div class="flex gap-2" style="flex-wrap: wrap;">
-            <button onclick="app.filtrarFinanzas('todas')" class="btn btn-sm btn-blue" id="filtro-fin-todas">Todas</button>
-            <button onclick="app.filtrarFinanzas('ingresos')" class="btn btn-sm btn-gray" id="filtro-fin-ingresos">Ingresos</button>
-            <button onclick="app.filtrarFinanzas('gastos')" class="btn btn-sm btn-gray" id="filtro-fin-gastos">Gastos</button>
-            <button onclick="app.filtrarFinanzas('mes')" class="btn btn-sm btn-gray" id="filtro-fin-mes">Este Mes</button>
+
+        <!-- SELECTOR DE PERÍODO -->
+        <div class="card mb-4" style="background: #f9fafb; border: 1px solid #e5e7eb;">
+          <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+            <span style="font-weight:700; font-size:0.9rem; color:#374151;">📅 Período:</span>
+            <select id="finPeriodoPreset" class="select" style="width:170px;" onchange="app.onFinPeriodoPreset()">
+              <option value="mes_actual">Mes actual</option>
+              <option value="trimestre">Últimos 3 meses</option>
+              <option value="ano_actual">Año actual</option>
+              <option value="todo">Todo el histórico</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+            <div id="finPeriodoCustom" style="display:none; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+              <input type="date" id="finDesde" class="input" style="width:150px;" value="${primerDiaMes}" />
+              <span style="color:#6b7280;">—</span>
+              <input type="date" id="finHasta" class="input" style="width:150px;" value="${hoyStr}" />
+            </div>
+            <button onclick="app.loadFinanzas()" class="btn btn-sm btn-gold">Aplicar</button>
+            <span id="finPeriodoLabel" style="font-size:0.85rem; color:#6b7280; font-style:italic;"></span>
           </div>
         </div>
-        <div class="card"><h3 class="text-xl font-bold mb-4">Movimientos Recientes</h3><div id="finanzasList"><p class="text-center text-gray-600">Cargando movimientos...</p></div></div>
+
+        <!-- KPIs del período -->
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+          <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Ingresos <span id="periodoLabelIngresos" style="opacity:0.7;"></span></p>
+            <p class="text-3xl font-bold mt-2" id="totalIngresos">€0.00</p>
+          </div>
+          <div class="card" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Gastos <span id="periodoLabelGastos" style="opacity:0.7;"></span></p>
+            <p class="text-3xl font-bold mt-2" id="totalGastos">€0.00</p>
+          </div>
+          <div class="card" style="background: linear-gradient(135deg, #D4A574, #C8A882); color: white;">
+            <p style="opacity: 0.9; font-size: 0.875rem;">Balance Neto <span id="periodoLabelBalance" style="opacity:0.7;"></span></p>
+            <p class="text-3xl font-bold mt-2" id="balanceNeto">€0.00</p>
+          </div>
+        </div>
+
+        ${this.currentUser.rol !== 'comercial' ? `<div class="card mb-4"><h3 class="text-xl font-bold mb-4">Comisiones de Comerciales</h3><div id="comisionesList"><p class="text-center text-gray-600">Cargando comisiones...</p></div></div>` : ''}
+
+        <div class="card mb-4">
+          <div class="flex gap-2" style="flex-wrap: wrap;">
+            <button onclick="app.filtrarTipoFinanza('todas')" class="btn btn-sm btn-blue" id="filtro-fin-todas">Todos</button>
+            <button onclick="app.filtrarTipoFinanza('ingresos')" class="btn btn-sm btn-gray" id="filtro-fin-ingresos">Ingresos</button>
+            <button onclick="app.filtrarTipoFinanza('gastos')" class="btn btn-sm btn-gray" id="filtro-fin-gastos">Gastos</button>
+          </div>
+        </div>
+
+        <div class="card"><h3 class="text-xl font-bold mb-4">Movimientos</h3><div id="finanzasList"><p class="text-center text-gray-600">Cargando movimientos...</p></div></div>
       </div>
       <!-- Modal Finanza -->
       <div id="modalFinanza" class="modal">
@@ -1646,55 +1831,116 @@ class VersumCRM {
     `;
   }
 
-  async loadFinanzas(filtro = 'todas') {
+  onFinPeriodoPreset() {
+    const preset = document.getElementById('finPeriodoPreset').value;
+    const customDiv = document.getElementById('finPeriodoCustom');
+    customDiv.style.display = preset === 'personalizado' ? 'flex' : 'none';
+  }
+
+  getFinPeriodoRango() {
+    const preset = document.getElementById('finPeriodoPreset')?.value || 'mes_actual';
+    const hoy = new Date();
+    let desde = null, hasta = null, label = '';
+
+    if (preset === 'mes_actual') {
+      desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59);
+      label = `${hoy.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}`;
+    } else if (preset === 'trimestre') {
+      desde = new Date(hoy); desde.setMonth(desde.getMonth() - 3);
+      hasta = new Date(hoy);
+      label = 'Últimos 3 meses';
+    } else if (preset === 'ano_actual') {
+      desde = new Date(hoy.getFullYear(), 0, 1);
+      hasta = new Date(hoy.getFullYear(), 11, 31, 23, 59, 59);
+      label = `Año ${hoy.getFullYear()}`;
+    } else if (preset === 'todo') {
+      desde = null; hasta = null;
+      label = 'Todo el histórico';
+    } else if (preset === 'personalizado') {
+      const desdeVal = document.getElementById('finDesde')?.value;
+      const hastaVal = document.getElementById('finHasta')?.value;
+      if (desdeVal) desde = new Date(desdeVal);
+      if (hastaVal) { hasta = new Date(hastaVal); hasta.setHours(23, 59, 59); }
+      label = desdeVal && hastaVal ? `${desdeVal} — ${hastaVal}` : 'Personalizado';
+    }
+    return { desde, hasta, label };
+  }
+
+  // filtroTipo se mantiene entre llamadas
+  async loadFinanzas(filtroTipo = null) {
+    // Mantener filtro de tipo activo
+    if (filtroTipo !== null) this._finFiltroTipo = filtroTipo;
+    const tipoActivo = this._finFiltroTipo || 'todas';
+
     try {
+      const { desde, hasta, label } = this.getFinPeriodoRango();
+
       let query = supabaseClient.from('finanzas').select('*, comercial:usuarios!finanzas_comercial_id_fkey(nombre)').order('fecha', { ascending: false });
       if (this.currentUser.rol === 'comercial') query = query.eq('comercial_id', this.currentUser.id);
+      if (desde) query = query.gte('fecha', desde.toISOString());
+      if (hasta) query = query.lte('fecha', hasta.toISOString());
+
       const { data: finanzas, error } = await query;
       if (error) throw error;
-      let finanzasFiltradas = finanzas || [];
-      const hoy = new Date();
-      const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
-      switch(filtro) {
-        case 'ingresos': finanzasFiltradas = finanzasFiltradas.filter(f => f.tipo === 'ingreso'); break;
-        case 'gastos': finanzasFiltradas = finanzasFiltradas.filter(f => f.tipo === 'gasto'); break;
-        case 'mes': finanzasFiltradas = finanzasFiltradas.filter(f => f.fecha >= primerDiaMes); break;
-      }
-      const ingresos = finanzas.filter(f => f.tipo === 'ingreso').reduce((sum, f) => sum + parseFloat(f.monto || 0), 0);
-      const gastos = finanzas.filter(f => f.tipo === 'gasto').reduce((sum, f) => sum + parseFloat(f.monto || 0), 0);
+
+      const todos = finanzas || [];
+      const ingresos = todos.filter(f => f.tipo === 'ingreso').reduce((s, f) => s + parseFloat(f.monto || 0), 0);
+      const gastos = todos.filter(f => f.tipo === 'gasto').reduce((s, f) => s + parseFloat(f.monto || 0), 0);
+
+      // Actualizar KPIs con label del período
+      const periodoShort = label ? `(${label})` : '';
       document.getElementById('totalIngresos').textContent = `€${ingresos.toFixed(2)}`;
       document.getElementById('totalGastos').textContent = `€${gastos.toFixed(2)}`;
       document.getElementById('balanceNeto').textContent = `€${(ingresos - gastos).toFixed(2)}`;
+      ['periodoLabelIngresos','periodoLabelGastos','periodoLabelBalance'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.textContent = periodoShort;
+      });
+      const labelEl = document.getElementById('finPeriodoLabel');
+      if (labelEl) labelEl.textContent = label ? `Mostrando: ${label}` : '';
+
+      // Filtro tipo
+      let filtradas = todos;
+      if (tipoActivo === 'ingresos') filtradas = todos.filter(f => f.tipo === 'ingreso');
+      if (tipoActivo === 'gastos') filtradas = todos.filter(f => f.tipo === 'gasto');
+
+      // Botones activos
       document.querySelectorAll('[id^="filtro-fin-"]').forEach(btn => { btn.classList.remove('btn-blue'); btn.classList.add('btn-gray'); });
-      const btnActivo = document.getElementById(`filtro-fin-${filtro}`);
+      const btnActivo = document.getElementById(`filtro-fin-${tipoActivo}`);
       if (btnActivo) { btnActivo.classList.remove('btn-gray'); btnActivo.classList.add('btn-blue'); }
+
       const container = document.getElementById('finanzasList');
-      if (!finanzasFiltradas.length) { container.innerHTML = `<p class="text-center text-gray-600 py-4">No hay movimientos</p>`; return; }
-      container.innerHTML = `
-        <div style="max-height: 500px; overflow-y: auto;">
-          ${finanzasFiltradas.map(f => `
-            <div class="mb-2" style="padding: 1rem; border-left: 4px solid ${f.tipo === 'ingreso' ? '#10b981' : '#ef4444'}; background: ${f.tipo === 'ingreso' ? '#f0fdf4' : '#fef2f2'}; border-radius: 8px;">
-              <div class="flex justify-between" style="align-items: flex-start;">
-                <div style="flex: 1;">
-                  <p class="font-bold" style="color: ${f.tipo === 'ingreso' ? '#065f46' : '#991b1b'};">${f.concepto}</p>
-                  <div class="flex gap-2 mt-1" style="flex-wrap: wrap; font-size: 0.875rem; color: #6b7280;">
-                    <span>📅 ${new Date(f.fecha).toLocaleDateString()}</span>
-                    ${f.categoria ? `<span class="badge" style="background: white;">🏷️ ${this.getCategoriaLabel(f.categoria)}</span>` : ''}
-                    ${this.currentUser.rol !== 'comercial' && f.comercial ? `<span class="badge" style="background: white;">👤 ${f.comercial.nombre}</span>` : ''}
+      if (!filtradas.length) { container.innerHTML = `<p class="text-center text-gray-600 py-4">No hay movimientos en este período</p>`; }
+      else {
+        container.innerHTML = `
+          <div style="max-height: 500px; overflow-y: auto;">
+            ${filtradas.map(f => `
+              <div class="mb-2" style="padding: 1rem; border-left: 4px solid ${f.tipo === 'ingreso' ? '#10b981' : '#ef4444'}; background: ${f.tipo === 'ingreso' ? '#f0fdf4' : '#fef2f2'}; border-radius: 8px;">
+                <div class="flex justify-between" style="align-items: flex-start;">
+                  <div style="flex: 1;">
+                    <p class="font-bold" style="color: ${f.tipo === 'ingreso' ? '#065f46' : '#991b1b'};">${f.concepto}</p>
+                    <div class="flex gap-2 mt-1" style="flex-wrap: wrap; font-size: 0.875rem; color: #6b7280;">
+                      <span>📅 ${new Date(f.fecha).toLocaleDateString()}</span>
+                      ${f.categoria ? `<span class="badge" style="background: white;">🏷️ ${this.getCategoriaLabel(f.categoria)}</span>` : ''}
+                      ${this.currentUser.rol !== 'comercial' && f.comercial ? `<span class="badge" style="background: white;">👤 ${f.comercial.nombre}</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="flex gap-2" style="align-items: center;">
+                    <p class="text-xl font-bold" style="color: ${f.tipo === 'ingreso' ? '#065f46' : '#991b1b'};">${f.tipo === 'ingreso' ? '+' : '-'}€${parseFloat(f.monto).toFixed(2)}</p>
+                    ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `<button onclick="app.deleteFinanza('${f.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1rem; color: #6b7280;">🗑️</button>` : ''}
                   </div>
                 </div>
-                <div class="flex gap-2" style="align-items: center;">
-                  <p class="text-xl font-bold" style="color: ${f.tipo === 'ingreso' ? '#065f46' : '#991b1b'};">${f.tipo === 'ingreso' ? '+' : '-'}€${parseFloat(f.monto).toFixed(2)}</p>
-                  ${(this.currentUser.rol === 'ceo' || this.currentUser.rol === 'admin') ? `<button onclick="app.deleteFinanza('${f.id}')" style="background: none; border: none; cursor: pointer; padding: 0.5rem; font-size: 1rem; color: #6b7280;">🗑️</button>` : ''}
-                </div>
               </div>
-            </div>
-          `).join('')}
-        </div>
-      `;
+            `).join('')}
+          </div>
+        `;
+      }
+
       if (this.currentUser.rol !== 'comercial') this.loadComisiones();
     } catch (err) { console.error('Error cargando finanzas:', err); document.getElementById('finanzasList').innerHTML = `<p class="text-center" style="color: #ef4444;">Error cargando movimientos</p>`; }
   }
+
+  filtrarTipoFinanza(tipo) { this.loadFinanzas(tipo); }
 
   async loadComisiones() {
     try {
@@ -1721,8 +1967,6 @@ class VersumCRM {
     } catch (err) { console.error('Error cargando comisiones:', err); }
   }
 
-  filtrarFinanzas(filtro) { this.loadFinanzas(filtro); }
-
   getCategoriaLabel(categoria) {
     const labels = { ventas: 'Ventas', genero: 'Género', marketing: 'Marketing', transporte: 'Transporte', alquiler: 'Alquiler', servicios: 'Servicios', nominas: 'Nóminas', otros: 'Otros' };
     return labels[categoria] || categoria;
@@ -1746,7 +1990,7 @@ class VersumCRM {
       if (error) throw error;
       showNotification(`✅ ${finanzaData.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado`);
       this.closeModalFinanza();
-      this.loadFinanzas('todas');
+      this.loadFinanzas();
     } catch (err) { console.error('Error registrando movimiento:', err); showNotification('❌ Error al registrar movimiento'); }
   }
 
@@ -1756,8 +2000,7 @@ class VersumCRM {
       const { error } = await supabaseClient.from('finanzas').delete().eq('id', id);
       if (error) throw error;
       showNotification('✅ Movimiento eliminado');
-      const filtroActual = document.querySelector('[id^="filtro-fin-"].btn-blue')?.id.replace('filtro-fin-', '') || 'todas';
-      this.loadFinanzas(filtroActual);
+      this.loadFinanzas();
     } catch (err) { console.error('Error eliminando movimiento:', err); showNotification('❌ Error al eliminar movimiento'); }
   }
 
@@ -1824,7 +2067,7 @@ class VersumCRM {
     try {
       const tipo = document.getElementById('dashPeriodoTipo')?.value || 'meses';
       const hoy = new Date();
-      let startISO, endISO, labels, buckets;
+      let startISO, endISO, buckets;
 
       if (tipo === 'dias') {
         const desde = document.getElementById('dashDesde')?.value;
@@ -1832,7 +2075,6 @@ class VersumCRM {
         if (!desde || !hasta) { showNotification('❌ Selecciona rango de fechas'); return; }
         startISO = new Date(desde).toISOString();
         endISO = new Date(new Date(hasta).setHours(23,59,59,999)).toISOString();
-        // Generar buckets diarios
         buckets = [];
         const d = new Date(desde);
         const end = new Date(hasta);
@@ -1898,7 +2140,7 @@ class VersumCRM {
   }
 
   // ============================================
-  // FACTURACIÓN CON FILTRO POR ESTADO
+  // FACTURACIÓN
   // ============================================
   renderFacturacionView() {
     return `
@@ -1920,7 +2162,6 @@ class VersumCRM {
           </div>
         </div>
 
-        <!-- Resumen por estado -->
         <div class="grid grid-2 mb-4" id="facturacionResumen"></div>
 
         <div id="facturacionList">
@@ -1949,7 +2190,6 @@ class VersumCRM {
       const { data: pedidos, error } = await query;
       if (error) throw error;
 
-      // Resumen por estado
       const estadosConteo = {
         'pendiente de emitir factura': { label: 'Pendiente de emitir', count: 0, total: 0, color: '#ef4444', bg: '#fef2f2' },
         'factura emitida': { label: 'Emitida', count: 0, total: 0, color: '#f59e0b', bg: '#fef3c7' },
@@ -1982,12 +2222,7 @@ class VersumCRM {
             </thead>
             <tbody>
               ${(pedidos || []).map(p => {
-                const estadoColors = {
-                  'pendiente de emitir factura': '#fee2e2',
-                  'factura emitida': '#fef3c7',
-                  'factura enviada': '#dbeafe',
-                  'factura cobrada': '#d1fae5'
-                };
+                const estadoColors = { 'pendiente de emitir factura': '#fee2e2', 'factura emitida': '#fef3c7', 'factura enviada': '#dbeafe', 'factura cobrada': '#d1fae5' };
                 const rowBg = estadoColors[p.estado_facturacion] || 'transparent';
                 return `
                   <tr style="border-top:1px solid #e5e7eb; background:${rowBg}">
