@@ -2433,13 +2433,13 @@ if (passwordValida) {
     try {
       if (this.editingUsuario) {
         const updateData = { ...usuarioData };
-        if (password) updateData.password_hash = password;
+       if (password) updateData.password_hash = await bcrypt.hash(password, 10);
         const { error } = await supabaseClient.from('usuarios').update(updateData).eq('id', this.editingUsuario.id);
         if (error) throw error;
         showNotification('✅ Usuario actualizado');
         if (this.editingUsuario.id === this.currentUser.id) { this.currentUser = { ...this.currentUser, ...usuarioData }; localStorage.setItem('versum_user', JSON.stringify(this.currentUser)); }
       } else {
-        usuarioData.password_hash = password;
+        usuarioData.password_hash = await bcrypt.hash(password, 10);
         usuarioData.created_at = new Date().toISOString();
         const { error } = await supabaseClient.from('usuarios').insert([usuarioData]);
         if (error) { if (error.code === '23505') { showNotification('❌ Email ya registrado'); return; } throw error; }
