@@ -2479,7 +2479,8 @@ if (passwordValida) {
     e.preventDefault();
     const nuevaPassword = document.getElementById('resetPasswordNueva').value;
     try {
-      const { error } = await supabaseClient.from('usuarios').update({ password_hash: nuevaPassword }).eq('id', this.resetPasswordUserId);
+      const hashedPassword = await bcrypt.hash(nuevaPassword, 10);
+const { error } = await supabaseClient.from('usuarios').update({ password_hash: hashedPassword }).eq('id', this.resetPasswordUserId);
       if (error) throw error;
       showNotification('✅ Contraseña reseteada'); this.closeModalResetPassword();
     } catch (err) { console.error('Error reseteando contraseña:', err); showNotification('❌ Error al resetear contraseña'); }
