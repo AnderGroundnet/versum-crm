@@ -225,7 +225,8 @@ class VersumCRM {
         if (errDiv) { errDiv.textContent = '❌ Usuario no encontrado o inactivo'; errDiv.style.display = 'block'; }
         return;
       }
-      if (password === data.password_hash) {
+      const passwordValida = data.password_hash.startsWith('$2') ? await bcrypt.compare(password, data.password_hash) : password === data.password_hash;
+if (passwordValida) {
         this.currentUser = data;
         localStorage.setItem('versum_user', JSON.stringify(data));
         await this.loadComerciales();
