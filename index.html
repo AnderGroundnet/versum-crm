@@ -136,6 +136,7 @@ const SUPABASE_URL = 'https://pqwlzrfqmhmsvbqjscgj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxd2x6cmZxbWhtc3ZicWpzY2dqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2NDMyMDAsImV4cCI6MjA4NDIxOTIwMH0.aQo1-ZGyTpmNMHZS7FnppxDExv9nMrp7oxfFkfj5Bhw';
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const bcrypt = dcodeIO.bcrypt;
 
 function showNotification(message, duration = 3000) {
   const notif = document.getElementById('notification');
